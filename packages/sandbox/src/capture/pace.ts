@@ -16,14 +16,19 @@ export class Pacer {
   }
 }
 
-/** Crawl-delay for all user agents from the site's robots.txt, in seconds, if it sets one. */
-export async function robotsCrawlDelay(context: BrowserContext, origin: string): Promise<number | undefined> {
+/** What the site's robots.txt asks of all user agents: a Crawl-delay in seconds, and paths not to fetch. */
+export interface RobotsRules {
+  delay?: number;
+  disallow: string[];
+}
+
+export async function robotsRules(context: BrowserContext, origin: string): Promise<RobotsRules> {
+  const rules: RobotsRules = { disallow: [] };
   try {
     const res = await context.request.get(`${origin}/robots.txt`, { timeout: 10_000, maxRedirects: 2 });
-    if (!res.ok()) return undefined;
+    if (!res.ok()) return rules;
     let forAll = false;
     let inAgents = false;
-    let delay: number | undefined;
     for (const raw of (await res.text()).split(/\r?\n/)) {
       const line = raw.replace(/#.*/, "").trim();
       const m = /^([\w-]+)\s*:\s*(.*)$/.exec(line);
@@ -37,15 +42,29 @@ export async function robotsCrawlDelay(context: BrowserContext, origin: string):
         continue;
       }
       inAgents = false;
-      if (field === "crawl-delay" && forAll) {
+      if (!forAll) continue;
+      if (field === "crawl-delay") {
         const n = Number.parseFloat(value);
-        if (Number.isFinite(n) && n >= 0) delay = n;
-      }
+        if (Number.isFinite(n) && n >= 0) rules.delay = n;
+      } else if (field === "disallow" && value) rules.disallow.push(value);
     }
-    return delay;
-  } catch {
-    return undefined;
-  }
+  } catch {}
+  return rules;
+}
+
+/** robots.txt path matching: a prefix of path + query, with `*` for any characters and `$` for the end. */
+export function disallowedBy(rules: RobotsRules, url: string): string | undefined {
+  const u = new URL(url);
+  const target = u.pathname + u.search;
+  return rules.disallow.find((rule) => {
+    const re = new RegExp(
+      `^${rule
+        .replace(/[.+?^${}()|[\]\\]/g, "\\$&")
+        .replace(/\*/g, ".*")
+        .replace(/\\\$$/, "$")}`,
+    );
+    return re.test(target);
+  });
 }
 
 const SLOW_DOWN_RE = /too many requests|too quickly|rate limit(ed)?|slow down|unusual traffic/i;

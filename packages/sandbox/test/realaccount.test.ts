@@ -7,6 +7,7 @@ import { startTinyNews } from "../../../fixtures/tiny-news/server.mjs";
 import { analyze } from "../src/analyze/index.js";
 import { judgeClick, judgeRequest } from "../src/capture/gate.js";
 import { capture, forgetSession, launchBrowser } from "../src/capture/index.js";
+import { disallowedBy } from "../src/capture/pace.js";
 import { initApp } from "../src/init.js";
 import { readEvents } from "../src/util.js";
 
@@ -73,6 +74,14 @@ describe("gates in real-account mode", () => {
       ).allow,
     ).toBe(true);
   });
+  it("matches robots.txt Disallow rules", () => {
+    const rules = { disallow: ["/vote?", "/login", "/x*y$"] };
+    expect(disallowedBy(rules, "http://x/vote?id=1")).toBe("/vote?");
+    expect(disallowedBy(rules, "http://x/login?goto=news")).toBe("/login");
+    expect(disallowedBy(rules, "http://x/xaay")).toBe("/x*y$");
+    expect(disallowedBy(rules, "http://x/xaayz")).toBeUndefined();
+    expect(disallowedBy(rules, "http://x/item?id=1")).toBeUndefined();
+  });
   it("refuses controls that act on the account", () => {
     expect(judgeClick({ tag: "a", name: "upvote", href: "http://x/vote?id=1&how=up&auth=a" })).toBeTruthy();
     expect(judgeClick({ tag: "a", name: "favorite", href: "http://x/fave?id=1&auth=a" })).toBeTruthy();
@@ -122,6 +131,7 @@ describe("unattended crawl of tiny-news with a real-account login", () => {
     }[];
     expect(coverage.find((c) => c.link.startsWith("/vote"))?.outcome).toBe("refused");
     expect(coverage.find((c) => c.link === "/item?id")?.outcome).toBe("opened");
+    expect(coverage.find((c) => c.link.startsWith("/reply"))?.reason).toMatch(/robots/);
   });
 
   it("paces page loads by the site's robots.txt Crawl-delay", () => {

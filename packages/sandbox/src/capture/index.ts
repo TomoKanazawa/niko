@@ -8,7 +8,7 @@ import type { AppConfig, ExchangeEvent, Manifest, Policy } from "../types.js";
 import { type AppPaths, TOOL_VERSION, contentType, ensureDir, log, writeJson } from "../util.js";
 import { explore } from "./explore.js";
 import { guessFromShape, judgeRequest } from "./gate.js";
-import { PACED_TYPES, Pacer, RateWatch, robotsCrawlDelay } from "./pace.js";
+import { PACED_TYPES, Pacer, RateWatch, type RobotsRules, disallowedBy, robotsRules } from "./pace.js";
 import { NOTICE_SCRIPT } from "./pagescript.js";
 import { Recorder } from "./recorder.js";
 
@@ -158,13 +158,17 @@ export async function capture(paths: AppPaths, config: AppConfig, opts: CaptureO
   recorder.screenshots = opts.screenshots ?? false;
 
   // Pacing: a real account must not look like an attack, and many sites block fast clients.
+  // Real-account mode also keeps out of what the site's robots.txt disallows: often exactly its action links.
   let delay = opts.delaySeconds ?? config.delaySeconds;
-  if (delay === undefined && strict) {
-    const robots = await robotsCrawlDelay(context, new URL(startUrl).origin);
-    delay = robots ?? 2;
-    log(
-      `Pacing: one page or data request every ${delay} s${robots !== undefined ? " (the site's robots.txt)" : ""}. Change it with --delay.`,
-    );
+  let robots: RobotsRules = { disallow: [] };
+  if (strict) {
+    robots = await robotsRules(context, new URL(startUrl).origin);
+    if (delay === undefined) {
+      delay = robots.delay ?? 2;
+      log(
+        `Pacing: one page or data request every ${delay} s${robots.delay !== undefined ? " (the site's robots.txt)" : ""}. Change it with --delay.`,
+      );
+    }
   }
   const pacer = new Pacer((delay ?? 0) * 1000);
   const rate = new RateWatch(config.origins, strict);
@@ -184,8 +188,10 @@ export async function capture(paths: AppPaths, config: AppConfig, opts: CaptureO
         return route.continue();
       }
       const inScope = config.origins.includes(new URL(req.url()).origin);
-      const verdict =
-        inScope && gated
+      const robotsRule = strict && inScope ? disallowedBy(robots, req.url()) : undefined;
+      const verdict = robotsRule
+        ? { allow: false as const, reason: `robots.txt disallows ${robotsRule}` }
+        : inScope && gated
           ? judgeRequest(
               { method: req.method(), url: req.url(), contentType: ct, body, resourceType: req.resourceType() },
               key,
@@ -240,6 +246,10 @@ export async function capture(paths: AppPaths, config: AppConfig, opts: CaptureO
         allowWrites,
         strict,
         shouldStop: () => !!rate.reason,
+        refuseLink: (href) => {
+          const rule = strict ? disallowedBy(robots, href) : undefined;
+          return rule ? `robots.txt disallows ${rule}` : undefined;
+        },
       });
       writeJson(join(dir, "coverage.json"), result.coverage);
     } else {

@@ -208,7 +208,8 @@ In real-account mode:
 - **Links that act on the account are refused.** Many sites change things with a plain link: vote, hide,
   favorite, flag, follow, log out. Such links are refused when they carry the account's token (`auth=`,
   `csrf=`, `hmac=`...) or have a word like these in the path.
-- **Image pings and beacons with a query string are blocked.**
+- **Image pings and beacons with a query string are blocked,** and so is anything the site's robots.txt
+  disallows. Sites often list their own action links there.
 - **You are told when something is stopped.** If a person or a script clicks something that is stopped, the
   page stays where it was and shows "Blocked by Thousand Sandbox ... Nothing was sent".
 - **Requests are paced:** one page or data request every `Crawl-delay` seconds from the site's robots.txt,

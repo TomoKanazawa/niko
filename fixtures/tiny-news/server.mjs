@@ -176,7 +176,8 @@ ${commentTree(user, storyId, c.id, depth + 1)}</div>`,
     if (path === "/news.css") return send(200, CSS, "text/css");
     if (path === "/news.js") return send(200, JS, "application/javascript");
     if (path === "/s.gif") return send(200, GIF, "image/gif");
-    if (path === "/robots.txt") return send(200, "User-agent: *\nDisallow: /x?\nCrawl-delay: 0.2\n", "text/plain");
+    if (path === "/robots.txt")
+      return send(200, "User-agent: *\nDisallow: /x?\nDisallow: /reply?\nCrawl-delay: 0.2\n", "text/plain");
     if (path === "/favicon.ico") return send(404, "", "text/plain");
 
     if (rateLimit) {

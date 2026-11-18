@@ -60,6 +60,8 @@ export async function explore(
     perState?: number;
     /** Checked before each action: true stops the crawl (the app asked to slow down). */
     shouldStop?: () => boolean;
+    /** Extra reason to refuse a link, such as the site's robots.txt. */
+    refuseLink?: (href: string) => string | undefined;
   },
 ) {
   const perState = opts.perState ?? 25;
@@ -67,10 +69,12 @@ export async function explore(
   const queue: string[] = [];
   const refused = new Map<string, string>();
   const links = new Map<string, CoverageEntry>();
-  const seeLink = (href: string) => {
+  const firstControl = new Map<string, Control>();
+  const seeLink = (href: string, control?: Control) => {
     try {
       const link = linkTemplate(href);
       if (!links.has(link)) links.set(link, { link, example: href, outcome: "not reached" });
+      if (control && !firstControl.has(link)) firstControl.set(link, control);
       return links.get(link)!;
     } catch {
       return undefined;
@@ -86,6 +90,11 @@ export async function explore(
       visited.set(key, { url: page.url(), tried: new Set() });
       queue.push(key);
       sinceNew = 0;
+      // List the new screen's links now, so the report shows what the crawl saw but never got to.
+      try {
+        for (const c of (await page.evaluate(CONTROLS_SCRIPT)) as Control[])
+          if (c.href && opts.origins.includes(new URL(c.href).origin)) seeLink(c.href, c);
+      } catch {}
     }
     return key;
   };
@@ -129,7 +138,9 @@ export async function explore(
           }
         }
         const entry = c.href ? seeLink(c.href) : undefined;
-        const why = judgeClick(c, { allowWrites: opts.allowWrites, strict: opts.strict });
+        const why =
+          judgeClick(c, { allowWrites: opts.allowWrites, strict: opts.strict }) ??
+          (c.href ? (opts.refuseLink?.(c.href) ?? null) : null);
         if (why) {
           if (entry && entry.outcome === "not reached") Object.assign(entry, { outcome: "refused", reason: why });
           state.tried.add(`${ck}#${c.name}`);
@@ -162,6 +173,14 @@ export async function explore(
       }
       await enter();
     }
+  }
+  // A link the crawl never got to may still be one it would refuse: say so rather than "not reached".
+  for (const [link, entry] of links) {
+    const c = firstControl.get(link);
+    if (entry.outcome !== "not reached" || !c?.href) continue;
+    const why =
+      judgeClick(c, { allowWrites: opts.allowWrites, strict: opts.strict }) ?? opts.refuseLink?.(c.href) ?? null;
+    if (why) Object.assign(entry, { outcome: "refused", reason: why });
   }
   const coverage = [...links.values()].sort((a, b) => a.link.localeCompare(b.link));
   const count = (o: CoverageEntry["outcome"]) => coverage.filter((c) => c.outcome === o).length;
