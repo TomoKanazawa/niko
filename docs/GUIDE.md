@@ -191,6 +191,41 @@ person's or a script's session first, so the login is valid and the policy has s
 
 `--allow-writes` removes the second protection. Use it only on a system you own that can be reset.
 
+### A real person's account
+
+If the login may be someone's real account, set the app up so that nothing can change it:
+
+```bash
+sandbox init https://news.example.com --real-account
+sandbox capture --explore --headless
+sandbox forget
+```
+
+In real-account mode:
+
+- **Every capture is read-only at the network,** whoever drives the browser: a person, a script or the
+  crawl. `--allow-writes` is refused.
+- **Links that act on the account are refused.** Many sites change things with a plain link: vote, hide,
+  favorite, flag, follow, log out. Such links are refused when they carry the account's token (`auth=`,
+  `csrf=`, `hmac=`...) or have a word like these in the path.
+- **Image pings and beacons with a query string are blocked.**
+- **You are told when something is stopped.** If a person or a script clicks something that is stopped, the
+  page stays where it was and shows "Blocked by Thousand Sandbox ... Nothing was sent".
+- **Requests are paced:** one page or data request every `Crawl-delay` seconds from the site's robots.txt,
+  or every 2 seconds. Change it with `--delay <seconds>`.
+- **The crawl stops when the site says to slow down:** an HTTP 429 or 503, or a short page saying so. What
+  was recorded is kept.
+
+Stopped requests are still kept, so `sandbox build` can make them work in the copy. They have no recorded
+answer, so the builder infers one from the request and the pages around it, and the report labels them
+`inferred`.
+
+The login window that `init` and `login` open is not gated: only log in there. The saved profile is a live
+login: delete it with `sandbox forget`, or add `--forget-after` to the capture.
+
+Each crawl writes `coverage.json` next to the capture. It lists every kind of link seen (path plus parameter
+names) and whether it was opened, refused (and why) or not reached.
+
 ### Test systems that get reset
 
 The tool assumes each capture continues from where the previous one ended, which is how a real system behaves:
@@ -504,9 +539,10 @@ Every command accepts `--app <name>`, needed only when `.sandbox/` holds more th
 | Command | What it does | Needs |
 |---|---|---|
 | `sandbox doctor` | Checks the machine | |
-| `sandbox init <url>` | Creates `.sandbox/<app>/` and opens Chrome for a login. `--no-login`, `--origin <origin...>` | A person, unless `--no-login` |
+| `sandbox init <url>` | Creates `.sandbox/<app>/` and opens Chrome for a login. `--no-login`, `--origin <origin...>`, `--real-account` | A person, unless `--no-login` |
 | `sandbox login` | Opens Chrome with the saved profile to log in again | A person |
-| `sandbox capture` | Records a person's session until the window is closed. `--screenshots`, `--label <text>`, `--after-reset` | A person |
+| `sandbox forget` | Deletes the saved login (the tool's Chrome profile and session cookies) | |
+| `sandbox capture` | Records a person's session until the window is closed. `--screenshots`, `--label <text>`, `--after-reset`, `--delay <s>`, `--forget-after` | A person |
 | `sandbox capture --script <file>` | Records a scripted session. `--headless` | |
 | `sandbox capture --explore` | Records an automatic read-only crawl. `--max-actions <n>` (default 300), `--headless`, `--allow-writes` | A valid login |
 | `sandbox policy` | Lists read/write decisions. `--set "<key>=<read\|write\|unknown>"` | |

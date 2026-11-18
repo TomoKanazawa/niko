@@ -1,4 +1,4 @@
-import { rmSync, writeFileSync } from "node:fs";
+import { existsSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { loadAnalysis } from "../analyze/index.js";
 import type { AppConfig, Cluster } from "../types.js";
@@ -99,6 +99,25 @@ export function prepareInput(paths: AppPaths, config: AppConfig): { dir: string;
   }
   writeFileSync(join(dir, "timeline.jsonl"), `${timeline.join("\n")}\n`);
 
-  const targets = clusters.filter((c) => (c.class === "read" || c.class === "write") && perCluster.has(c.id));
+  // Writes the gate stopped to protect the live app: the request only. The answer has to be inferred.
+  const blockedFile = join(paths.analysis, "blocked.json");
+  const blocked: { cluster: string; examples: Record<string, unknown>[] }[] = existsSync(blockedFile)
+    ? readJson(blockedFile)
+    : [];
+  for (const b of blocked)
+    b.examples.forEach((r, i) => {
+      const sdir = ensureDir(join(dir, "samples", b.cluster));
+      writeJson(join(sdir, `${i + 1}.json`), {
+        request: { method: r.method, url: r.url, contentType: r.contentType || undefined, body: r.body || undefined },
+        response: null,
+        note: "Never sent: the capture's gate stopped it so the live app was not changed. There is no recorded answer.",
+        sentFrom: { pageUrl: r.pageUrl, control: r.control },
+      });
+    });
+  const blockedIds = new Set(blocked.map((b) => b.cluster));
+
+  const targets = clusters.filter(
+    (c) => (c.class === "read" || c.class === "write") && (perCluster.has(c.id) || blockedIds.has(c.id)),
+  );
   return { dir, targets };
 }

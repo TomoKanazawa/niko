@@ -7,7 +7,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { Command } from "commander";
 import { analyze } from "./analyze/index.js";
 import { build, estimateBuild } from "./builder/index.js";
-import { type CaptureOptions, capture, launchBrowser, loadPolicy, savePolicy } from "./capture/index.js";
+import { type CaptureOptions, capture, forgetSession, launchBrowser, loadPolicy, savePolicy } from "./capture/index.js";
 import { SessionExpired, adoptDriftCapture, drift, scheduleDaily } from "./drift/index.js";
 import { initApp } from "./init.js";
 import { up } from "./runtime/server.js";
@@ -45,25 +45,48 @@ const withApp = (c: Command) =>
 withApp(program.command("init <url>").description("Set up a new app and open Chrome so you can log in once"))
   .option("--origin <origin...>", "extra origins the copy should answer for (default: the URL's origin)")
   .option("--no-login", "do not open the browser now")
-  .action(async (url: string, o: { app?: string; origin?: string[]; login: boolean }) => {
+  .option(
+    "--real-account",
+    "the login is (or may be) a real person's account: every capture is read-only, paced, and never sends a change",
+  )
+  .action(async (url: string, o: { app?: string; origin?: string[]; login: boolean; realAccount?: boolean }) => {
     const u = new URL(url);
-    const { paths, config } = initApp(url, { app: o.app, origins: o.origin ? [u.origin, ...o.origin] : undefined });
+    const { paths, config } = initApp(url, {
+      app: o.app,
+      origins: o.origin ? [u.origin, ...o.origin] : undefined,
+      realAccount: o.realAccount,
+    });
     out(`Created ${paths.root}`);
-    if (o.login) await openForLogin(paths, config.startUrl);
+    if (config.realAccount)
+      out(
+        "Real-account mode: nothing that changes the account (posting, voting, saving, deleting, logging out) is ever sent, whoever clicks it.",
+      );
+    if (o.login) await openForLogin(paths, config.startUrl, !!config.realAccount);
     out("Next: sandbox capture");
   });
 
 withApp(program.command("login").description("Open Chrome with the saved profile to log in again")).action(
   async (o) => {
     const { paths, config } = ctx(o);
-    await openForLogin(paths, config.startUrl);
+    await openForLogin(paths, config.startUrl, !!config.realAccount);
   },
 );
 
-async function openForLogin(paths: ReturnType<typeof appPaths>, url: string) {
+withApp(
+  program.command("forget").description("Delete the saved login (the tool's Chrome profile and session cookies)"),
+).action((o) => {
+  const { paths } = ctx(o);
+  out(forgetSession(paths) ? "The saved login was deleted." : "There was no saved login.");
+});
+
+async function openForLogin(paths: ReturnType<typeof appPaths>, url: string, realAccount = false) {
   out(
     "A Chrome window is opening. Log in, then close the window. The session is kept in a profile used only by this tool.",
   );
+  if (realAccount)
+    out(
+      "This window is not gated: only log in here. The saved profile is a live login to your account: anyone who can read this folder can use it. Delete it with `sandbox forget` when you are done.",
+    );
   const context = await launchBrowser(paths, {});
   const page = context.pages()[0] ?? (await context.newPage());
   await page.goto(url).catch(() => {});
@@ -83,9 +106,17 @@ withApp(program.command("capture").description("Record the live app"))
   .option("--screenshots", "also save a screenshot with each snapshot")
   .option("--label <text>", "a note stored with the capture")
   .option("--after-reset", "the app's data was put back to its starting state before this session (test systems)")
+  .option("--delay <seconds>", "wait this long between page and data requests to the live app", (v) =>
+    Number.parseFloat(v),
+  )
+  .option("--forget-after", "delete the saved login when the capture ends")
   .action(async (o) => {
     const { paths, config } = ctx(o);
     if (o.script && o.explore) throw new Error("Use --script or --explore, not both.");
+    if (config.realAccount && o.allowWrites)
+      throw new Error(
+        "This app is set up as a real account: --allow-writes is refused. Nothing that changes it is sent.",
+      );
     let script: CaptureOptions["script"];
     if (o.script) {
       const mod = await import(pathToFileURL(resolve(String(o.script))).href);
@@ -96,8 +127,10 @@ withApp(program.command("capture").description("Record the live app"))
     const id = await capture(paths, config, {
       mode: o.script ? "script" : o.explore ? "explore" : "human",
       script,
-      allowWrites: o.explore ? !!o.allowWrites : true,
+      allowWrites: config.realAccount ? undefined : o.explore ? !!o.allowWrites : true,
       maxActions: o.maxActions,
+      delaySeconds: o.delay,
+      forgetAfter: !!o.forgetAfter,
       headless: !!o.headless,
       screenshots: !!o.screenshots,
       label: o.label,

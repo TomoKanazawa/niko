@@ -122,7 +122,13 @@ export async function build(paths: AppPaths, config: AppConfig, opts: BuildOptio
     cwd: paths.root,
     writeDir: paths.replica,
     readDirs: [inputDir],
-    denyDirs: [paths.captures, paths.heldOut, paths.profile, join(paths.root, "pseudonyms.json")],
+    denyDirs: [
+      paths.captures,
+      paths.heldOut,
+      paths.profile,
+      join(paths.root, "pseudonyms.json"),
+      join(paths.root, "session-cookies.json"),
+    ],
     checkCommand,
   };
   const remaining = () => maxUsd - state.costUsd;
@@ -219,6 +225,18 @@ Put HTML or JSON shapes shared with other endpoints in replica/templates/ and re
 If the data model lacks something this endpoint needs, extend schema.sql and seed.sql without breaking other endpoints.
 Run the check, read the differences, fix, and repeat until this endpoint passes.`;
 
+  const blockedPrompt = (c: Cluster) => `${intro} --cluster ${c.id}
+
+Step: implement one endpoint that was never answered.
+Endpoint ${c.id}: ${c.key}. The capture's gate stopped every request to it, to protect the live app, so there is
+no recorded response: input/samples/${c.id}/ holds only the requests, with the page and control each came from.
+Infer what the real app does from the request (its path, parameters and body) and from the recorded pages around
+it: for example a vote link marks the item as voted, raises its points by one and redirects to the "goto" page; a
+comment form adds the comment and redirects to the item. Read replica/MODEL.md and schema.sql, extend them if
+needed, and write replica/routes/${c.id}.ts: change the database, then answer the way the app's similar endpoints
+answer (a redirect, or the page or JSON they return), so the pages that are recorded show the change.
+The check cannot test this endpoint (nothing was recorded); make sure the other endpoints still pass.`;
+
   /** True when some route file claims this endpoint, by cluster id or by its path. */
   const hasRoute = (c: Cluster) => {
     const dir = join(paths.replica, "routes");
@@ -238,14 +256,15 @@ Run the check, read the differences, fix, and repeat until this endpoint passes.
   const worker = async () => {
     for (let c = queue.shift(); c; c = queue.shift()) {
       const name = `implement:${c.id}`;
-      if (!(await step(name, config.models.implement, implementPrompt(c), share, 60))) {
+      const prompt = c.blocked ? blockedPrompt(c) : implementPrompt(c);
+      if (!(await step(name, config.models.implement, prompt, share, 60))) {
         outOfBudget = true;
         return;
       }
       // The agent can end "ok" without writing the handler. Ask once more, then leave the step open.
       if (!hasRoute(c) && state.steps[name]!.ok) {
         say(`${name}: no handler was written; asking again`);
-        const again = `${implementPrompt(c)}
+        const again = `${prompt}
 
 Your last turn ended without the file replica/routes/${c.id}.ts. Write that file now. Do not leave this endpoint to replay.`;
         if (!(await step(name, config.models.implement, again, share, 60))) {
@@ -259,6 +278,11 @@ Your last turn ended without the file replica/routes/${c.id}.ts. Write that file
     }
   };
   await Promise.all(Array.from({ length: Math.min(opts.parallel ?? 4, 4, Math.max(1, queue.length)) }, worker));
+  // Handlers for never-answered endpoints are labelled inferred in the ledger: nothing could check them.
+  writeJson(
+    join(paths.replica, "inferred.json"),
+    allTargets.filter((c) => c.blocked && hasRoute(c)).map((c) => ({ id: c.id, key: c.key })),
+  );
   if (outOfBudget) return finish("budget");
 
   // ---- verify, then repair what fails ----

@@ -22,6 +22,8 @@ export class Recorder {
   private pending = new Set<Promise<unknown>>();
   private starts = new Map<Request, { id: string; ts: number; causedBy: string | null }>();
   private bodyOf = new Map<Request, Promise<Buffer | null>>();
+  /** Requests the network gate stopped: recorded once by `blocked()`, not again when they fail or are answered locally. */
+  private stopped = new WeakSet<Request>();
   private currentAction: { id: string; until: number } | null = null;
   private lastSnapshot: string | undefined;
   private gen = 0;
@@ -137,7 +139,7 @@ export class Recorder {
     this.starts.delete(req);
     this.inflight = Math.max(0, this.inflight - 1);
     this.lastActivity = Date.now();
-    if (!start) return;
+    if (!start || this.stopped.has(req)) return;
     const url = req.url();
     if (!/^https?:/.test(url)) return;
     let status = 0;
@@ -185,6 +187,7 @@ export class Recorder {
 
   /** Record a request the network gate stopped. */
   blocked(req: Request, reason: string) {
+    this.stopped.add(req);
     const post = req.postDataBuffer();
     this.write({
       type: "exchange",
@@ -277,7 +280,8 @@ export class Recorder {
     const id = this.nextId("p");
     const files: string[] = [];
     try {
-      const html = await page.content();
+      // The gate's notice is the tool's, not the app's.
+      const html = (await page.content()).replace(/<div id="sbx-blocked-notice"[^>]*>[^<]*<\/div>/, "");
       writeFileSync(join(this.dir, "snapshots", `${id}.html`), html);
       files.push(`${id}.html`);
       const aria = await page.locator("body").ariaSnapshot({ timeout: 3000 });

@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { type BrowserContext, type Page, chromium } from "playwright";
 import YAML from "yaml";
@@ -8,6 +8,8 @@ import type { AppConfig, ExchangeEvent, Manifest, Policy } from "../types.js";
 import { type AppPaths, TOOL_VERSION, contentType, ensureDir, log, writeJson } from "../util.js";
 import { explore } from "./explore.js";
 import { guessFromShape, judgeRequest } from "./gate.js";
+import { PACED_TYPES, Pacer, RateWatch, robotsCrawlDelay } from "./pace.js";
+import { NOTICE_SCRIPT } from "./pagescript.js";
 import { Recorder } from "./recorder.js";
 
 export interface CaptureOptions {
@@ -31,6 +33,19 @@ export interface CaptureOptions {
   manifestMode?: Manifest["mode"];
   /** Human mode: resolves when the user is done. Default: the browser window is closed. */
   until?: (context: BrowserContext) => Promise<void>;
+  /** Seconds between page and data requests to the live app. Overrides the app's config and robots.txt. */
+  delaySeconds?: number;
+  /** Delete the saved login when the capture ends. */
+  forgetAfter?: boolean;
+}
+
+/** Delete the saved login: the tool's Chrome profile and the session cookies kept beside it. */
+export function forgetSession(paths: AppPaths): boolean {
+  const cookies = join(paths.root, "session-cookies.json");
+  const had = existsSync(paths.profile) || existsSync(cookies);
+  rmSync(paths.profile, { recursive: true, force: true });
+  rmSync(cookies, { force: true });
+  return had;
 }
 
 export async function launchBrowser(
@@ -68,6 +83,8 @@ async function launchContext(
   opts: { headless?: boolean; bundledBrowser?: boolean; harPath?: string },
 ) {
   ensureDir(paths.profile);
+  // The profile holds a live login. Only the user may read it, even if the folder was made by an older version.
+  for (const dir of [paths.root, paths.profile]) chmodSync(dir, 0o700);
   const common = {
     headless: opts.headless ?? false,
     serviceWorkers: "block" as const,
@@ -108,8 +125,11 @@ export async function capture(paths: AppPaths, config: AppConfig, opts: CaptureO
   ensureDir(join(dir, "har"));
   const startUrl = opts.startUrl ?? config.startUrl;
   const policy = loadPolicy(paths);
-  const gated = opts.mode === "explore" || opts.gate === true;
-  const allowWrites = opts.allowWrites ?? !gated;
+  const strict = config.realAccount === true;
+  if (strict && opts.allowWrites)
+    throw new Error("This app is set up as a real account (--real-account): writes are never let through.");
+  const gated = strict || opts.mode === "explore" || opts.gate === true;
+  const allowWrites = strict ? false : (opts.allowWrites ?? !gated);
 
   const context = await launchBrowser(paths, {
     headless: opts.headless,
@@ -137,8 +157,22 @@ export async function capture(paths: AppPaths, config: AppConfig, opts: CaptureO
   recorder.source = opts.mode === "human" ? "human" : opts.mode === "explore" ? "agent" : "script";
   recorder.screenshots = opts.screenshots ?? false;
 
-  // Network gate. In human mode it only observes; in exploration it blocks anything that is not known to be a read.
-  if (gated) {
+  // Pacing: a real account must not look like an attack, and many sites block fast clients.
+  let delay = opts.delaySeconds ?? config.delaySeconds;
+  if (delay === undefined && strict) {
+    const robots = await robotsCrawlDelay(context, new URL(startUrl).origin);
+    delay = robots ?? 2;
+    log(
+      `Pacing: one page or data request every ${delay} s${robots !== undefined ? " (the site's robots.txt)" : ""}. Change it with --delay.`,
+    );
+  }
+  const pacer = new Pacer((delay ?? 0) * 1000);
+  const rate = new RateWatch(config.origins, strict);
+  rate.attach(context);
+
+  // Network gate. Off for a person or script on a system you own; in exploration, drift checks and real-account
+  // mode it blocks anything that is not known to be a read.
+  if (gated || pacer.intervalMs > 0) {
     await context.route("**/*", async (route) => {
       const req = route.request();
       const body = req.postData() ?? "";
@@ -150,14 +184,35 @@ export async function capture(paths: AppPaths, config: AppConfig, opts: CaptureO
         return route.continue();
       }
       const inScope = config.origins.includes(new URL(req.url()).origin);
-      const verdict = inScope
-        ? judgeRequest({ method: req.method(), url: req.url(), contentType: ct, body }, key, policy, { allowWrites })
-        : { allow: true as const, reason: "out of scope" };
+      const verdict =
+        inScope && gated
+          ? judgeRequest(
+              { method: req.method(), url: req.url(), contentType: ct, body, resourceType: req.resourceType() },
+              key,
+              policy,
+              { allowWrites, strict },
+            )
+          : { allow: true as const, reason: inScope ? "not gated" : "out of scope" };
       if (!policy[key] && inScope && !["GET", "HEAD", "OPTIONS"].includes(req.method()))
         policy[key] = guessFromShape(req.method(), req.url(), ct, body);
-      if (verdict.allow) return route.continue();
+      if (verdict.allow) {
+        if (inScope && PACED_TYPES.has(req.resourceType())) await pacer.wait();
+        return route.continue();
+      }
       recorder.blocked(req, verdict.reason);
       recorder.note("gate", `blocked ${req.method()} ${req.url()} (${verdict.reason})`);
+      // Tell the person (or the script's author) in the page, so a click that did nothing is not a mystery.
+      if (opts.mode !== "explore" && !["image", "ping", "beacon"].includes(req.resourceType()))
+        try {
+          // After the stopped load has settled: evaluating in a frame while its navigation is pending hangs.
+          const frame = req.frame();
+          setTimeout(
+            () => void frame.evaluate(`(${NOTICE_SCRIPT})(${JSON.stringify(verdict.reason)})`).catch(() => {}),
+            100,
+          );
+        } catch {}
+      // A stopped page load answers "204 No Content", which leaves the current page where it is.
+      if (req.isNavigationRequest()) return route.fulfill({ status: 204, body: "" });
       return route.abort("blockedbyclient");
     });
   }
@@ -179,19 +234,28 @@ export async function capture(paths: AppPaths, config: AppConfig, opts: CaptureO
       if (!opts.script) throw new Error("script mode needs a script");
       await opts.script(page, { recorder, context });
     } else if (opts.mode === "explore") {
-      await explore(page, recorder, {
+      const result = await explore(page, recorder, {
         origins: config.origins,
         maxActions: opts.maxActions ?? config.budgets.exploreActions,
         allowWrites,
+        strict,
+        shouldStop: () => !!rate.reason,
       });
+      writeJson(join(dir, "coverage.json"), result.coverage);
     } else {
       log("Recording. Use the app as usual, then close the browser window to finish.");
       await (opts.until ? opts.until(context) : new Promise<void>((resolve) => context.on("close", () => resolve())));
     }
 
+    if (rate.reason) recorder.note("gate", `stopped asking the live app: ${rate.reason}`);
+    if (rate.reason)
+      log(
+        `Stopped asking the live app for more: ${rate.reason}. What was recorded so far is kept. Wait a while, then run again with a longer --delay.`,
+      );
     if (!closedByUser) {
       await recorder.flush();
-      if (opts.probe !== false) await probePass(context, recorder, config.origins);
+      if (opts.probe !== false && !rate.reason)
+        await probePass(context, recorder, config.origins, strict ? { limit: 50, pacer, policy } : {});
       const last = context.pages().find((p) => !p.isClosed());
       if (last) await recorder.snapshot(last, "end");
     }
@@ -204,6 +268,7 @@ export async function capture(paths: AppPaths, config: AppConfig, opts: CaptureO
   } finally {
     await recorder.stop().catch(() => {});
     if (!closedByUser) await context.close().catch(() => {});
+    if (opts.forgetAfter && forgetSession(paths)) log("The saved login was deleted (--forget-after).");
   }
 
   // Remember what the gate learned, and what a human session showed.
@@ -233,13 +298,22 @@ const safeOrigin = (url: string) => {
  * Probe pass: ask for every safe GET once more with the live session. Whatever differs between the first
  * answer and the probe, with no write in between, is volatile (timestamps, tokens).
  */
-async function probePass(context: BrowserContext, recorder: Recorder, origins: string[], limit = 400) {
+async function probePass(
+  context: BrowserContext,
+  recorder: Recorder,
+  origins: string[],
+  opts: { limit?: number; pacer?: Pacer; policy?: Policy } = {},
+) {
+  const limit = opts.limit ?? 400;
   const seen = new Set<string>();
   const targets: ExchangeEvent[] = [];
   for (const x of [...recorder.exchanges].reverse()) {
     if (x.method !== "GET" || x.status !== 200 || x.blocked || !origins.includes(safeOrigin(x.url))) continue;
     if (!["document", "xhr", "fetch"].includes(x.resourceType)) continue;
     if (/log-?out|sign-?out|logoff/i.test(x.url) || seen.has(x.url)) continue;
+    // Real-account mode: the probe asks the live app directly, outside the browser's gate, so judge it again.
+    if (opts.policy && !judgeRequest({ ...x, contentType: "", body: "" }, "", opts.policy, { strict: true }).allow)
+      continue;
     seen.add(x.url);
     targets.push(x);
     if (targets.length >= limit) break;
@@ -252,6 +326,7 @@ async function probePass(context: BrowserContext, recorder: Recorder, origins: s
       // Twice in a row: the two answers have no write between them for certain, so any difference is volatile.
       n++;
       for (const pass of ["a", "b"]) {
+        await opts.pacer?.wait();
         const res = await context.request.get(x.url, { headers, maxRedirects: 0, timeout: 15_000 });
         const body = await res.body().catch(() => Buffer.alloc(0));
         recorder.write({

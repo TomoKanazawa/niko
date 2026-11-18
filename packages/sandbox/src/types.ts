@@ -40,7 +40,7 @@ export interface ExchangeEvent extends Base {
   endTs: number;
   causedBy: string | null;
   failed?: string;
-  /** Set when the network gate stopped the request during exploration. */
+  /** Set when the network gate stopped the request: it never reached the server. */
   blocked?: boolean;
 }
 
@@ -108,6 +108,14 @@ export interface AppConfig {
   models: { model: string; implement: string; triage: string };
   budgets: { buildUsd: number; exploreActions: number };
   telemetry: boolean;
+  /**
+   * The saved login may be a person's real account. Every capture is then read-only at the network (person,
+   * script and crawl alike), links that carry the session's token are refused, requests are paced, and
+   * `--allow-writes` is refused.
+   */
+  realAccount?: boolean;
+  /** Seconds between page and data requests to the live app. Default: robots.txt Crawl-delay in real-account mode, else 0. */
+  delaySeconds?: number;
 }
 
 export interface Cluster {
@@ -128,6 +136,8 @@ export interface Cluster {
   /** Request query/body parameter names that change without changing the response. */
   volatileParams: string[];
   exchangeIds: string[];
+  /** Only ever seen as requests the gate stopped: no answer exists, so a handler has to be inferred. */
+  blocked?: boolean;
 }
 
 export interface VolatileRules {

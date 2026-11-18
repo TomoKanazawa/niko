@@ -27,6 +27,21 @@ async function stateKey(page: Page): Promise<string> {
   return sha256(`${u.origin}${templatePath(u.pathname).template}\n${skeleton}`).slice(0, 16);
 }
 
+/** One line of the coverage report: a kind of link the crawl saw, and what became of it. */
+export interface CoverageEntry {
+  /** Path template plus the names of the query parameters, e.g. /item?id */
+  link: string;
+  example: string;
+  outcome: "opened" | "refused" | "not reached";
+  reason?: string;
+}
+
+const linkTemplate = (href: string) => {
+  const u = new URL(href);
+  const names = [...new Set(u.searchParams.keys())].sort();
+  return `${templatePath(u.pathname).template}${names.length ? `?${names.join("&")}` : ""}`;
+};
+
 const controlKey = (c: Control) =>
   `${c.tag}|${c.name.replace(/\d+/g, "0")}|${c.href ? templatePath(new URL(c.href).pathname).template : ""}`;
 
@@ -37,14 +52,33 @@ const controlKey = (c: Control) =>
 export async function explore(
   page: Page,
   recorder: Recorder,
-  opts: { origins: string[]; maxActions: number; allowWrites: boolean; perState?: number },
+  opts: {
+    origins: string[];
+    maxActions: number;
+    allowWrites: boolean;
+    strict?: boolean;
+    perState?: number;
+    /** Checked before each action: true stops the crawl (the app asked to slow down). */
+    shouldStop?: () => boolean;
+  },
 ) {
   const perState = opts.perState ?? 25;
   const visited = new Map<string, { url: string; tried: Set<string> }>();
   const queue: string[] = [];
   const refused = new Map<string, string>();
+  const links = new Map<string, CoverageEntry>();
+  const seeLink = (href: string) => {
+    try {
+      const link = linkTemplate(href);
+      if (!links.has(link)) links.set(link, { link, example: href, outcome: "not reached" });
+      return links.get(link)!;
+    } catch {
+      return undefined;
+    }
+  };
   let actions = 0;
   let sinceNew = 0;
+  const stopped = () => opts.shouldStop?.() === true;
 
   const enter = async () => {
     const key = await stateKey(page);
@@ -57,11 +91,11 @@ export async function explore(
   };
   await enter();
 
-  while (queue.length && actions < opts.maxActions && sinceNew < 100) {
+  while (queue.length && actions < opts.maxActions && sinceNew < 100 && !stopped()) {
     const key = queue.shift()!;
     const state = visited.get(key)!;
     let patternCount = new Map<string, number>();
-    for (let n = 0; n < perState && actions < opts.maxActions; n++) {
+    for (let n = 0; n < perState && actions < opts.maxActions && !stopped(); n++) {
       if ((await stateKey(page)) !== key) {
         try {
           await page.goto(state.url, { waitUntil: "domcontentloaded" });
@@ -94,8 +128,10 @@ export async function explore(
             return false;
           }
         }
-        const why = judgeClick(c, { allowWrites: opts.allowWrites });
+        const entry = c.href ? seeLink(c.href) : undefined;
+        const why = judgeClick(c, { allowWrites: opts.allowWrites, strict: opts.strict });
         if (why) {
+          if (entry && entry.outcome === "not reached") Object.assign(entry, { outcome: "refused", reason: why });
           state.tried.add(`${ck}#${c.name}`);
           if (!refused.has(c.name)) {
             refused.set(c.name, why);
@@ -107,6 +143,10 @@ export async function explore(
       });
       if (!next) break;
       state.tried.add(`${controlKey(next)}#${next.name}`);
+      if (next.href) {
+        const entry = seeLink(next.href);
+        if (entry) entry.outcome = "opened";
+      }
       actions++;
       sinceNew++;
       try {
@@ -123,6 +163,11 @@ export async function explore(
       await enter();
     }
   }
-  log(`Explored ${visited.size} states with ${actions} actions; refused ${refused.size} controls.`);
-  return { states: visited.size, actions, refused: [...refused.entries()] };
+  const coverage = [...links.values()].sort((a, b) => a.link.localeCompare(b.link));
+  const count = (o: CoverageEntry["outcome"]) => coverage.filter((c) => c.outcome === o).length;
+  log(
+    `Explored ${visited.size} states with ${actions} actions; refused ${refused.size} controls. ` +
+      `Links: ${count("opened")} kinds opened, ${count("refused")} refused, ${count("not reached")} not reached (see coverage.json).`,
+  );
+  return { states: visited.size, actions, refused: [...refused.entries()], coverage };
 }

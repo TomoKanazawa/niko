@@ -6,7 +6,7 @@ import { type AppPaths, appNameFromUrl, appPaths, ensureDir, saveConfig } from "
 /** Create `.sandbox/<app>/` and its config. */
 export function initApp(
   url: string,
-  opts: { cwd?: string; app?: string; origins?: string[] } = {},
+  opts: { cwd?: string; app?: string; origins?: string[]; realAccount?: boolean } = {},
 ): { paths: AppPaths; config: AppConfig } {
   const cwd = opts.cwd ?? process.cwd();
   const u = new URL(url);
@@ -21,6 +21,7 @@ export function initApp(
     models: { model: "claude-opus-5-5", implement: "claude-sonnet-5-5", triage: "claude-sonnet-5-5" },
     budgets: { buildUsd: 40, exploreActions: 300 },
     telemetry: false,
+    realAccount: opts.realAccount || undefined,
   };
   saveConfig(paths, config);
   const gi = join(cwd, ".gitignore");

@@ -1,6 +1,6 @@
-# Status (2026-11-11)
+# Status (2026-11-18)
 
-Version 0.1.0. 21 automated tests pass on the test app `fixtures/tiny-clinic`. One public site
+Version 0.1.0. 34 automated tests pass on the test apps `fixtures/tiny-clinic` and `fixtures/tiny-news`. One public site
 (demo.playwright.dev/todomvc, HTTPS) was recorded and replayed with the network disabled, with no console errors.
 
 ## Built and tested
@@ -15,6 +15,8 @@ Version 0.1.0. 21 automated tests pass on the test app `fixtures/tiny-clinic`. O
 | Stateful copy | Handler contract, SQLite, hand-written replica of the test app passes L1, L2 and L3 |
 | Verify | Deterministic comparison (JSON, HTML as DOM, volatile masks), ledger per endpoint and per action, replica hash check |
 | Build | Supervisor with steps, saved state, resume, budget stop, repair loop, tool restrictions. Tested with a scripted stand-in for the model |
+| Real-account mode | `init --real-account`: every capture gated (person, script, crawl); token-carrying links, social verbs, image pings and beacons refused; page stays put with a notice; pacing from robots.txt; stop on 429/503 or a slow-down page; `forget` and `--forget-after`; coverage.json per crawl. On tiny-news, a crawl and a script that votes, hides, comments, favorites and logs out change nothing |
+| Stopped writes | Kept as endpoints with no answer (`analysis/blocked.json`); the builder writes inferred handlers for them, labelled `inferred`. Not yet run with a real model |
 | Drift | Read-only re-check with the saved login; API shape, form fields and controls compared; severity; session-expiry stop; daily schedule file |
 
 ## Not yet run

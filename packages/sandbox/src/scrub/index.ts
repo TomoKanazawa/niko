@@ -26,7 +26,9 @@ import {
 
 const SECRET_HEADERS = /^(cookie|authorization|proxy-authorization|x-csrf.*|x-xsrf.*|x-api-key|x-auth.*)$/i;
 const TOKEN_NAMES =
-  /^(csrf.*|.*csrf|_?token|access_token|refresh_token|id_token|authenticity_token|__requestverificationtoken|nonce|pre|api_?key|secret|session_?id|sid|jsessionid|phpsessid)$/i;
+  /^(csrf.*|.*csrf|xsrf.*|_?token|auth|auth_?token|access_token|refresh_token|id_token|authenticity_token|__requestverificationtoken|nonce|pre|hmac|sig|signature|fnid|sesskey|api_?key|secret|session_?id|sid|jsessionid|phpsessid)$/i;
+/** name=value pairs inside links, form actions and scripts: ?a=1&amp;auth=… */
+const QUERY_PAIR = /[?&;](?:amp;)?([A-Za-z_][\w-]{0,40})=([^&"'\s<>#;\\]{6,})/g;
 const PASSWORD_NAMES = /^(pass(word|wd)?|pwd|otp|pin|passcode|clearpass|newpass.*|authpass)$/i;
 
 const PII_FIELD: [RegExp, Kind][] = [
@@ -112,6 +114,14 @@ export interface ScrubReport {
   samples: { kind: string; fake: string }[];
 }
 
+const safeDecode = (s: string) => {
+  try {
+    return decodeURIComponent(s);
+  } catch {
+    return s;
+  }
+};
+
 const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 export async function scrubCapture(paths: AppPaths, id: string, mode: "secrets" | "pii"): Promise<ScrubReport> {
@@ -173,6 +183,9 @@ export async function scrubCapture(paths: AppPaths, id: string, mode: "secrets" 
     if (form) scanFields(form);
     if (json && typeof json === "object")
       scanFields(Array.isArray(json) ? { _: json } : (json as Record<string, unknown>));
+    // Tokens inside links and scripts (a vote link that carries the account's auth token, for example).
+    for (const m of text.matchAll(QUERY_PAIR))
+      if (TOKEN_NAMES.test(m[1]!)) addSecret(safeDecode(m[2]!), typeOfName(m[1]!));
     if (/html/.test(ct) || /^\s*</.test(text)) {
       for (const m of text.matchAll(/<input\b[^>]*>/gi)) {
         const tag = m[0];

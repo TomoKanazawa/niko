@@ -64,6 +64,20 @@ export interface Corpus {
   byId: Map<string, Ex>;
   /** Captures recorded after the app's data was reset: replaying them starts again from the seed. */
   afterReset: Set<string>;
+  /** Requests the network gate stopped. They never reached the server, so there is no answer. */
+  blocked: BlockedRequest[];
+}
+
+export interface BlockedRequest {
+  capture: string;
+  method: string;
+  url: string;
+  contentType: string;
+  body: string;
+  reason: string;
+  /** The page it was sent from and the control that sent it, when the recorder saw the click. */
+  pageUrl?: string;
+  control?: string;
 }
 
 /** Read every scrubbed capture of the app. */
@@ -75,6 +89,7 @@ export function loadCorpus(paths: AppPaths, config: AppConfig, only?: string[]):
     snapshots: [],
     byId: new Map(),
     afterReset: new Set(),
+    blocked: [],
   };
   for (const id of only ?? listCaptures(paths)) {
     const b = loadBundle(paths, id, true);
@@ -82,7 +97,22 @@ export function loadCorpus(paths: AppPaths, config: AppConfig, only?: string[]):
     if (b.manifest.afterReset) corpus.afterReset.add(id);
     for (const e of b.events) {
       if (e.type === "exchange") {
-        if (e.blocked || e.status === 0) continue;
+        if (e.blocked) {
+          const ct = contentType(e.reqHeaders);
+          const action = b.events.find((a) => a.type === "action" && a.id === e.causedBy);
+          corpus.blocked.push({
+            capture: id,
+            method: e.method,
+            url: e.url,
+            contentType: ct,
+            body: e.reqBody && (isTextType(ct) || !ct) ? b.bodies.text(e.reqBody) : "",
+            reason: e.failed ?? "blocked",
+            pageUrl: action?.type === "action" ? action.pageUrl : undefined,
+            control: action?.type === "action" ? action.target?.name : undefined,
+          });
+          continue;
+        }
+        if (e.status === 0) continue;
         let reqText = "";
         const ct = contentType(e.reqHeaders);
         if (e.reqBody && (isTextType(ct) || !ct)) reqText = b.bodies.text(e.reqBody);
@@ -274,6 +304,42 @@ export function analyze(paths: AppPaths, config: AppConfig): Analysis {
       exchangeIds: list.map((x) => x.id),
     });
   }
+  // Writes the gate stopped: endpoints with no recorded answer. The builder infers a handler from the request
+  // and the page it came from, and the ledger labels it inferred.
+  const blockedByKey = new Map<string, BlockedRequest[]>();
+  for (const r of corpus.blocked) {
+    let parsed: ParsedRequest;
+    try {
+      parsed = parseRequest(r.method, r.url, r.contentType, r.body);
+    } catch {
+      continue;
+    }
+    if (!config.origins.includes(parsed.origin) || groups.has(parsed.key)) continue;
+    blockedByKey.set(parsed.key, [...(blockedByKey.get(parsed.key) ?? []), r]);
+  }
+  for (const [key, list] of [...blockedByKey].sort(([a], [b]) => a.localeCompare(b))) {
+    const p = parseRequest(list[0]!.method, list[0]!.url, list[0]!.contentType, list[0]!.body);
+    clusters.push({
+      id: idByKey.get(key) ?? `c_${String(++nextNum).padStart(4, "0")}`,
+      key,
+      method: p.method,
+      host: p.host,
+      pathTemplate: p.pathTemplate,
+      discriminator: p.discriminator,
+      class: "write",
+      classReason: `stopped by the gate (${list[0]!.reason}); never sent`,
+      count: 0,
+      instances: 0,
+      resourceTypes: [],
+      statuses: [],
+      volatileParams: [],
+      exchangeIds: [],
+      blocked: true,
+    });
+  }
+  const blockedOut = clusters
+    .filter((c) => c.blocked)
+    .map((c) => ({ cluster: c.id, key: c.key, examples: blockedByKey.get(c.key)!.slice(0, 5) }));
   const clusterOf = new Map(clusters.map((c) => [c.id, c]));
   const isWrite = (x: Ex) =>
     clusterOf.get(x.cluster!)?.class === "write" ||
@@ -429,10 +495,12 @@ export function analyze(paths: AppPaths, config: AppConfig): Analysis {
     actions: corpus.actions.length,
   };
   for (const c of clusters) coverage[c.class] = (coverage[c.class] ?? 0) + 1;
+  coverage.blocked = blockedOut.length;
   coverage.unobservedInCode = codeEndpoints.size;
 
   ensureDir(paths.analysis);
   writeJson(join(paths.analysis, "clusters.json"), clusters);
+  writeJson(join(paths.analysis, "blocked.json"), blockedOut);
   writeJson(join(paths.analysis, "volatile.json"), volatile);
   writeJson(join(paths.analysis, "flow.json"), flow);
   writeJson(join(paths.analysis, "split.json"), split);
@@ -472,7 +540,7 @@ function shapeOf(value: unknown): unknown {
 export function openApi(clusters: Cluster[], corpus: Corpus) {
   const pathsObj: Record<string, Record<string, unknown>> = {};
   for (const c of clusters) {
-    if (c.class !== "read" && c.class !== "write") continue;
+    if ((c.class !== "read" && c.class !== "write") || c.blocked) continue;
     const x = corpus.byId.get(c.exchangeIds[c.exchangeIds.length - 1]!)!;
     if (!/json/.test(contentType(x.resHeaders))) continue;
     let schema: unknown = {};

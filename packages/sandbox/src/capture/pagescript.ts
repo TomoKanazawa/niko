@@ -64,3 +64,19 @@ export const CONTROLS_SCRIPT = `(() => {
   }
   return out;
 })()`;
+
+/** Shown in the page when the network gate stops something a person or script did. Argument: the reason. */
+export const NOTICE_SCRIPT = `(reason) => {
+  const id = 'sbx-blocked-notice';
+  let host = document.getElementById(id);
+  if (!host) {
+    host = document.createElement('div');
+    host.id = id;
+    host.setAttribute('data-sbx-notice', '');
+    host.style.cssText = 'position:fixed;z-index:2147483647;left:50%;bottom:24px;transform:translateX(-50%);max-width:560px;padding:10px 14px;border-radius:8px;background:#1f2328;color:#fff;font:14px/1.4 system-ui,sans-serif;box-shadow:0 4px 16px rgba(0,0,0,.3)';
+    (document.body || document.documentElement).appendChild(host);
+  }
+  host.textContent = 'Blocked by Thousand Sandbox: this would change the live app (' + reason + '). Nothing was sent.';
+  clearTimeout(window.__sbxNoticeTimer);
+  window.__sbxNoticeTimer = setTimeout(() => host.remove(), 6000);
+}`;

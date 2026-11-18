@@ -56,6 +56,8 @@ cd /path/to/workdir && /path/to/thousand-sandbox/bin/sandbox analyze
 - **Do not make changes in a real app** unless you were told which test record to use. `capture --explore` is
   read-only by design; `--allow-writes` and scripted sessions are not.
 - **Do not add `--allow-writes` on a system that cannot be reset.**
+- **If the login may be a real person's account, set the app up with `sandbox init <url> --real-account`.**
+  Then nothing that changes the account is sent, whoever clicks. Run `sandbox forget` when you are done.
 - **On a test system that was reset since the last capture, record with `--after-reset`**, or `sandbox verify`
   will fail for a reason that is not a fault in the copy.
 - **Do not commit or upload anything under `.sandbox/`.** It holds the unscrubbed recording, a browser profile
