@@ -38,8 +38,9 @@ import { type Rules, learn } from "./normalize.js";
 
 const NOISE_HOSTS =
   /(google-analytics|googletagmanager|doubleclick|googlesyndication|sentry\.io|segment\.(io|com)|mixpanel|hotjar|datadoghq|newrelic|nr-data|fullstory|intercom|amplitude|clarity\.ms|facebook\.(net|com)|bugsnag|logrocket|pendo\.io|optimizely|heapanalytics)/i;
-const NOISE_PATH = /\/(beacon|collect|telemetry|analytics|rum|pixel|track(ing)?|log(s|ger)?|metrics|ping)(\/|$|\?)/i;
-const SESSION_PATH =
+export const NOISE_PATH =
+  /\/([\w-]+-)?(beacon|collect|telemetry|analytics|rum|pixel|track(ing)?|log(s|ger)?|metrics|ping)(\/|$|\?)/i;
+export const SESSION_PATH =
   /(^|[/_.-])(login|logout|logoff|signin|signout|sign-in|sign-out|authenticate|auth|sso|session|keepalive|keep-alive|heartbeat)([/_.-]|$)/i;
 const ASSET_TYPES = new Set(["script", "stylesheet", "image", "font", "media", "manifest"]);
 
@@ -158,7 +159,40 @@ export interface Analysis {
   coverage: Record<string, number>;
 }
 
-function mergeTemplates(exs: Ex[]) {
+/** Keys whose string values are identifiers. */
+const ID_KEY = /^(u?id|uuid|guid|slug|key)$|(_id|Id|_uid|Uid|UID|ID)$/;
+
+/**
+ * Identifiers the app's own JSON answers present: a path segment equal to one of them is an id, whatever it looks like
+ * (a dashboard called `billing-queue`, a folder called `clinic-ops`). Only values that could not be a route word count:
+ * with a digit, a dash or an underscore, or twelve characters or more.
+ */
+function knownIds(exs: Ex[]): Set<string> {
+  const ids = new Set<string>();
+  const walk = (v: unknown, key: string, depth: number) => {
+    if (depth > 12) return;
+    if (Array.isArray(v)) for (const e of v) walk(e, key, depth + 1);
+    else if (v && typeof v === "object") for (const [k, e] of Object.entries(v)) walk(e, k, depth + 1);
+    else if (
+      typeof v === "string" &&
+      ID_KEY.test(key) &&
+      v.length <= 128 &&
+      /^[\w.-]+$/.test(v) &&
+      (/[-\d_]/.test(v) || v.length >= 12)
+    )
+      ids.add(v);
+  };
+  for (const x of exs) {
+    if (!x.inScope || !x.resBody || x.status >= 300 || !/json/i.test(contentType(x.resHeaders))) continue;
+    try {
+      walk(JSON.parse(x.bodies.text(x.resBody)), "", 0);
+    } catch {}
+  }
+  return ids;
+}
+
+export function mergeTemplates(exs: Ex[]) {
+  const known = knownIds(exs);
   // Data-driven: a path segment that takes many values under the same neighbours is an id, even when it does not look like one.
   for (let pass = 0; pass < 3; pass++) {
     const groups = new Map<string, Map<string, Ex[]>>();
@@ -176,12 +210,13 @@ function mergeTemplates(exs: Ex[]) {
     }
     let changed = false;
     for (const [key, values] of groups) {
-      if (values.size < 4) continue;
       const i = Number(key.slice(key.lastIndexOf(" ") + 1));
       // Sibling pages with distinct names (/patients, /search, /reports, /admin) are not ids: require data-like values.
       const dataLike = [...values.keys()].filter((v) => /\d/.test(v) || v.length > 24).length;
-      if (dataLike < values.size * 0.75) continue;
-      for (const [seg, list] of values)
+      const manyValues = values.size >= 4 && dataLike >= values.size * 0.75;
+      for (const [seg, list] of values) {
+        // A segment the app's JSON names as an id is one, even seen once. Never the first segment: /dashboard/new is a page.
+        if (!manyValues && !(i >= 2 && known.has(seg))) continue;
         for (const x of list) {
           const segs = x.parsed.pathTemplate.split("/");
           if (segs[i] !== seg) continue;
@@ -189,6 +224,7 @@ function mergeTemplates(exs: Ex[]) {
           x.parsed.pathTemplate = segs.join("/");
           changed = true;
         }
+      }
     }
     if (!changed) break;
   }
@@ -206,6 +242,44 @@ const safeDecode = (s: string) => {
     return s;
   }
 };
+
+/**
+ * A single-page app answers every page address with the same HTML and lets its scripts draw the page. Those addresses
+ * are one endpoint, `/{path}`: the copy must answer an address nobody visited while recording (a record made in the
+ * copy) with the same shell. Three addresses with byte-identical HTML make a shell; every address that ever answered
+ * with it joins.
+ */
+export function mergeShell(exs: Ex[]) {
+  const docs = exs.filter(
+    (x) =>
+      x.inScope &&
+      x.method === "GET" &&
+      x.resourceType === "document" &&
+      x.status === 200 &&
+      x.resBody &&
+      /text\/html/i.test(contentType(x.resHeaders)) &&
+      !x.parsed.discriminator,
+  );
+  const pathsByBody = new Map<string, Set<string>>();
+  for (const x of docs) {
+    const k = `${x.parsed.host} ${x.resBody}`;
+    if (!pathsByBody.has(k)) pathsByBody.set(k, new Set());
+    pathsByBody.get(k)!.add(x.parsed.pathTemplate);
+  }
+  const shell = new Set<string>();
+  for (const [k, paths] of pathsByBody)
+    if (paths.size >= 3) for (const p of paths) shell.add(`${k.split(" ")[0]} ${p}`);
+  if (!shell.size) return;
+  // Every page request to a shell address joins, a redirect to the login or token-refresh page included: left on its
+  // own it would be a literal endpoint that answers that address instead of the shell.
+  for (const x of exs) {
+    if (!x.inScope || x.method !== "GET" || x.resourceType !== "document" || x.parsed.discriminator) continue;
+    if (!shell.has(`${x.parsed.host} ${x.parsed.pathTemplate}`)) continue;
+    x.parsed.pathTemplate = "/{path}";
+    x.parsed.pathParams = [safeDecode(new URL(x.url).pathname.slice(1))];
+    x.parsed.key = `${x.parsed.method} ${x.parsed.host} /{path}`;
+  }
+}
 
 function classify(
   list: Ex[],
@@ -262,6 +336,7 @@ export function analyze(paths: AppPaths, config: AppConfig): Analysis {
   const policy: Policy = existsSync(policyFile) ? ((YAML.parse(readFileSyncText(policyFile)) as Policy) ?? {}) : {};
 
   mergeTemplates(exs);
+  mergeShell(exs);
   const probesOf = new Map<string, ProbeEvent[]>();
   for (const p of corpus.probes) {
     if (!probesOf.has(p.of)) probesOf.set(p.of, []);
@@ -436,11 +511,33 @@ export function analyze(paths: AppPaths, config: AppConfig): Analysis {
   // Split: what the builder may see, and what is kept back to check the copy.
   const split: Split = { build: [], heldOut: [], l3: [] };
   const held = new Set<string>();
+  // A record can only be checked as "never shown" when its content is visible somewhere else the builder may look:
+  // a dashboard whose panels appear in no other answer cannot be written from nothing.
+  const valuesOf = new Map<string, Set<string>>();
+  const instancesWith = new Map<string, Set<string>>();
+  for (const x of exs) {
+    if (!x.instance || !x.inScope || !/json/.test(contentType(x.resHeaders))) continue;
+    const text = textOf(x);
+    if (text === undefined || text.length > 2_000_000) continue;
+    try {
+      const leaves: Record<string, string> = {};
+      collectLeaves(JSON.parse(text), "", leaves);
+      for (const v of Object.values(leaves)) {
+        if (v.length < 3 || /^(true|false|null|-?[\d.]+)$/.test(v)) continue;
+        if (!valuesOf.has(x.instance)) valuesOf.set(x.instance, new Set());
+        valuesOf.get(x.instance)!.add(v);
+        if (!instancesWith.has(v)) instancesWith.set(v, new Set());
+        instancesWith.get(v)!.add(x.instance);
+      }
+    } catch {}
+  }
+  const derivable = (instance: string) =>
+    [...(valuesOf.get(instance) ?? [])].every((v) => [...instancesWith.get(v)!].some((i) => i !== instance));
   for (const c of clusters) {
     if (c.class !== "read" && c.class !== "write") continue;
     const instances = [...new Set(c.exchangeIds.map((id) => corpus.byId.get(id)!.instance!))];
     if (instances.length < 2) continue;
-    const heldInstances = new Set(instances.filter((_, i) => i % 2 === 1));
+    const heldInstances = new Set(instances.filter((inst, i) => i % 2 === 1 && derivable(inst)));
     for (const id of c.exchangeIds) if (heldInstances.has(corpus.byId.get(id)!.instance!)) held.add(id);
   }
   const byEpisode = new Map<string, Ex[]>();

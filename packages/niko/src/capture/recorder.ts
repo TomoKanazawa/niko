@@ -9,6 +9,8 @@ const SETTLE_QUIET_MS = 500;
 const SETTLE_CAP_MS = 10_000;
 /** A response whose headers arrived this long ago with the body still coming is a stream, not a pending request. */
 const STREAM_AFTER_MS = 2_000;
+/** How long the end of a capture waits for bodies still arriving before it goes on without them. */
+const FLUSH_CAP_MS = 15_000;
 
 /**
  * Records one episode: every HTTP exchange with bodies, WebSocket frames, user actions and page snapshots.
@@ -45,6 +47,8 @@ export class Recorder {
     private context: BrowserContext,
     private dir: string,
     episode: number,
+    /** The app's origins: their Cache API storage is emptied when recording starts. */
+    private origins: string[] = [],
   ) {
     this.bodies = new BodyStore(join(dir, "bodies"));
     ensureDir(join(dir, "episodes"));
@@ -113,6 +117,19 @@ export class Recorder {
   }
 
   private attachPage(page: Page, isNew: boolean) {
+    // Record every file the page uses. Two browser stores would otherwise answer silently for what an earlier run
+    // left behind: the HTTP cache, and the Cache API that some apps fill themselves (Grafana keeps its icons there).
+    // Cookies and local storage stay: they hold the login.
+    page
+      .context()
+      .newCDPSession(page)
+      .then(async (s) => {
+        await s.send("Network.setCacheDisabled", { cacheDisabled: true });
+        if (!isNew)
+          for (const origin of this.origins)
+            await s.send("Storage.clearDataForOrigin", { origin, storageTypes: "cache_storage" }).catch(() => {});
+      })
+      .catch(() => {});
     if (isNew)
       page
         .opener()
@@ -345,7 +362,12 @@ export class Recorder {
   /** Wait for in-flight bodies and snapshots to be written. */
   async flush() {
     await this.settle();
-    for (let i = 0; i < 20 && this.pending.size; i++) await Promise.allSettled([...this.pending]);
+    // Bounded: a body that never ends (a stream the page is still reading) must not hold the capture open.
+    const deadline = Date.now() + FLUSH_CAP_MS;
+    while (this.pending.size && Date.now() < deadline) {
+      this.inflight(); // marks late bodies as streams and drops them from `pending`
+      await Promise.race([Promise.allSettled([...this.pending]), new Promise((r) => setTimeout(r, 250))]);
+    }
   }
 
   async stop() {

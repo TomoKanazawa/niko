@@ -1,7 +1,7 @@
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import type { Ex } from "../analyze/index.js";
-import { loadAnalysis } from "../analyze/index.js";
+import { SESSION_PATH, loadAnalysis } from "../analyze/index.js";
 import { firstDiff, normalizeBody } from "../analyze/normalize.js";
 import { Replica } from "../runtime/replica.js";
 import type { AppConfig, Ledger, LedgerEntry, LedgerLabel } from "../types.js";
@@ -122,6 +122,8 @@ export async function verify(
       body: x.reqBody ? x.bodies.get(x.reqBody) : Buffer.alloc(0),
     });
     if (!replica.hasRoute(x.cluster!)) continue; // replayed clusters are labelled, not checked
+    // A redirect into the login or token-refresh page is a session event; in the copy every request is logged in.
+    if (x.status >= 300 && x.status < 400 && SESSION_PATH.test(header(x.resHeaders, "location") ?? "")) continue;
     if (opts.onlyClusters && !opts.onlyClusters.includes(x.cluster!)) continue;
     const level = l3Reads.has(x.id) ? "l3" : heldOut.has(x.id) ? "l2" : "l1";
     if (x.status === 200 && !x.resBody) continue; // the recorder could not read this body, so there is nothing to compare

@@ -153,7 +153,7 @@ export async function capture(paths: AppPaths, config: AppConfig, opts: CaptureO
   };
   writeJson(join(dir, "manifest.json"), manifest);
 
-  const recorder = new Recorder(context, dir, 1);
+  const recorder = new Recorder(context, dir, 1, config.origins);
   recorder.source = opts.mode === "human" ? "human" : opts.mode === "explore" ? "agent" : "script";
   recorder.screenshots = opts.screenshots ?? false;
 

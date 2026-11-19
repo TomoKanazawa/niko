@@ -17,7 +17,7 @@ captures/<id>/
   scrubbed/              the same, with secrets (and optionally personal data) replaced. Analysis, the builder
                          and the copy read only this
 analysis/
-  clusters.json          endpoints: method, host, path template, class, counts, exchange ids
+  clusters.json          endpoints: method, host, path template ({id}: one segment; {path}: the rest of the address), class, counts, exchange ids
   volatile.json          per endpoint: fields that change with no change of data
   flow.json              values from one endpoint's response that appear in another's request
   split.json             build set, held-out set, read-after-write checks

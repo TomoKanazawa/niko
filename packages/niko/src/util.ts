@@ -32,8 +32,7 @@ export function contentType(headers: Headers): string {
 }
 
 export const isTextType = (ct: string) =>
-  /^text\/|json|javascript|xml|x-www-form-urlencoded|multipart\/form-data|svg|html/.test(ct) &&
-  !/font|octet/.test(ct);
+  /^text\/|json|javascript|xml|x-www-form-urlencoded|multipart\/form-data|svg|html/.test(ct) && !/font|octet/.test(ct);
 
 /** Content-addressed body store. */
 export class BodyStore {

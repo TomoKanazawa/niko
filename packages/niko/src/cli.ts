@@ -217,7 +217,7 @@ withApp(program.command("build").description("Generate the stateful copy with a 
         );
     }
     analyze(paths, config);
-    const est = estimateBuild(paths);
+    const est = estimateBuild(paths, o.cluster?.split(","));
     const cap = o.maxUsd ?? config.budgets.buildUsd;
     out(
       `${est.endpoints} endpoints to build. Rough cost $${est.lowUsd}-${est.highUsd}; hard stop at $${cap}. Uses your ANTHROPIC_API_KEY.`,

@@ -267,7 +267,12 @@ Named in the app's code but never seen (3): /notes, /sign, /ws
 
 An **exchange** is one request with its response. An **endpoint** is a group of requests of the same kind, such
 as every `GET /orders/{id}`; each has an id like `c_0007`, shown in `niko report`. (The files call an endpoint
-a cluster.)
+a cluster.) A path segment is taken as an `{id}` when it looks like one (a number, a UUID, a long token), when it
+takes several different values under the same neighbours, or when the app's own JSON answers name that exact value
+as an id, so `/api/folders/clinic-ops` is `/api/folders/{id}` after `/api/folders` listed a folder with that uid.
+In a single-page app every page address answers with the same HTML and the scripts draw the page; three such
+addresses with identical HTML become one endpoint, `GET /{path}`, so the copy can answer an address nobody
+visited while recording, such as a record made in the copy.
 
 | Kind | Meaning | In the copy |
 |---|---|---|
@@ -422,9 +427,12 @@ Endpoints: 8 verified, 6 replayed-only, 0 inferred, 0 uncaptured, 1 external
 - Each endpoint gets a share of the cap, at least $0.50. A step that uses up its share is tried once more with
   twice as much, and if it still does not finish the endpoint stays on replay; the build goes on with the others.
 
-Measured builds so far: the test app, 11 endpoints, about $1.10 and three minutes; and a Gitea with 29 endpoints,
-where large server-built pages cost $0.40 to $0.50 each and some need more. A large app will cost more and may
-not finish cleanly; start with a low `--max-usd` and continue with `--resume`.
+Measured builds so far: the test app, 11 endpoints, about $1.10 and three minutes; a Gitea with 29 endpoints,
+where large server-built pages cost $0.40 to $0.50 each and some need more; and a Grafana (a single-page app
+talking to a JSON API) where the twelve endpoints that needed a handler cost $2.70 in all, most of them under ten
+cents. `--cluster` is the lever: build the writes, the reads they change and the reads that take parameters, and
+leave single-instance reads on replay. A large app will cost more and may not finish cleanly; start with a low
+`--max-usd` and continue with `--resume`.
 
 ### Fix the copy by hand
 

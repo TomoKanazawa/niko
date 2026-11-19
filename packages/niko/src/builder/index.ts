@@ -197,7 +197,11 @@ and write endpoints. Then write:
    (undo the recorded writes: a record created during the session is not in the seed; an edited field has its
    earlier value where an earlier read shows it).
 3. replica/MODEL.md: one line per read or write endpoint: cluster id, tables, and which request value selects the record.
-Do not write route files in this step.`,
+Do not write route files in this step.${
+        opts.clusters?.length
+          ? `\nOnly these endpoints will be implemented; model what they need and no more: ${targets.map((c) => `${c.id} (${c.key})`).join(", ")}.`
+          : ""
+      }`,
       maxUsd * 0.2,
       80,
     );
@@ -349,8 +353,13 @@ endpoint's write handler or in the seed data. Re-run the check until it passes.`
 }
 
 /** What a build is likely to cost, from the number of endpoints. A rough guide printed before any model call. */
-export function estimateBuild(paths: AppPaths): { endpoints: number; lowUsd: number; highUsd: number } {
+export function estimateBuild(
+  paths: AppPaths,
+  only?: string[],
+): { endpoints: number; lowUsd: number; highUsd: number } {
   const clusters = JSON.parse(readFileSync(join(paths.analysis, "clusters.json"), "utf8")) as Cluster[];
-  const endpoints = clusters.filter((c) => c.class === "read" || c.class === "write").length;
+  const endpoints = clusters.filter(
+    (c) => (c.class === "read" || c.class === "write") && (!only?.length || only.includes(c.id)),
+  ).length;
   return { endpoints, lowUsd: Math.round(2 + endpoints * 0.3), highUsd: Math.round(5 + endpoints * 1.2) };
 }

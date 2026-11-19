@@ -139,12 +139,12 @@ const templateRe = new Map<string, RegExp>();
 export function templateRegex(template: string): RegExp {
   let re = templateRe.get(template);
   if (!re) {
-    re = new RegExp(
-      `^${template
-        .split("{id}")
-        .map((s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
-        .join("([^/]+)")}$`,
-    );
+    // {id} is one segment; {path} is the rest of the address (the shell of a single-page app).
+    const source = template
+      .split(/(\{id\}|\{path\})/)
+      .map((s) => (s === "{id}" ? "([^/]+)" : s === "{path}" ? "(.*)" : s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")))
+      .join("");
+    re = new RegExp(`^${source}$`);
     templateRe.set(template, re);
   }
   return re;
@@ -164,7 +164,12 @@ export function matchCluster<T extends ClusterRef>(
     if (c.discriminator) {
       if (p.discriminator?.name !== c.discriminator.name || p.discriminator.value !== c.discriminator.value) continue;
     }
-    const score = (c.discriminator ? 1000 : 0) + c.pathTemplate.length - 10 * (c.pathTemplate.split("{id}").length - 1);
+    // Most specific wins: a literal beats an {id}, and anything beats the catch-all {path}.
+    const score =
+      (c.discriminator ? 1000 : 0) +
+      c.pathTemplate.length -
+      10 * (c.pathTemplate.split("{id}").length - 1) -
+      100 * (c.pathTemplate.split("{path}").length - 1);
     if (!best || score > best.score) best = { cluster: c, pathParams: m.slice(1), score };
   }
   return best;

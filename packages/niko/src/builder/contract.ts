@@ -5,7 +5,7 @@ export interface RouteContext {
   method: string;
   url: URL;
   path: string;
-  /** Values of the {id} segments of the endpoint's path template, in order, URL-decoded. Always strings. */
+  /** Values of the {id} segments of the endpoint's path template, in order, URL-decoded. Always strings. A "{path}" template (the page shell of a single-page app) has one value: the rest of the address. */
   params: string[];
   query: Record<string, string>;
   /** Parsed form body (application/x-www-form-urlencoded or multipart/form-data; a file part is its file name), or {}. */

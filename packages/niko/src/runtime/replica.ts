@@ -3,7 +3,7 @@ import { createRequire } from "node:module";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { resolveRequest } from "../analyze/cluster.js";
-import { type Ex, loadAnalysis } from "../analyze/index.js";
+import { type Ex, NOISE_PATH, loadAnalysis } from "../analyze/index.js";
 import type { AppConfig, Cluster, Headers, Ledger, Split } from "../types.js";
 import { type AppPaths, ensureDir, header, isTextType, parseBody, readJson, sha256 } from "../util.js";
 
@@ -278,7 +278,13 @@ export class Replica {
     const ct = (req.headers["content-type"] ?? "").split(";")[0]!.trim().toLowerCase();
     const text = req.body.length && (isTextType(ct) || !ct) ? req.body.toString("utf8") : "";
     const method = req.method.toUpperCase();
-    const { parsed, cluster, instance } = resolveRequest(this.clusters, method, req.url, ct, text);
+    const resolved = resolveRequest(this.clusters, method, req.url, ct, text);
+    const { parsed, instance } = resolved;
+    // The shell of a single-page app answers page addresses only; a data request nobody recorded stays unanswered.
+    const cluster =
+      resolved.cluster?.pathTemplate.includes("{path}") && !/text\/html/i.test(req.headers.accept ?? "")
+        ? undefined
+        : resolved.cluster;
     const inScope = this.config.origins.includes(parsed.origin);
     const empty = Buffer.alloc(0);
     if (method === "OPTIONS" && !cluster)
@@ -304,6 +310,8 @@ export class Replica {
       // Browsers ask for /favicon.ico by themselves. An app that has none is not missing a recording.
       if (method === "GET" && new URL(req.url).pathname === "/favicon.ico")
         return { status: 404, headers: [["content-type", "text/plain"]], body: empty, served: "noise" };
+      // Telemetry the recording never saw (the app sends it only sometimes) is noise, not a gap in the copy.
+      if (NOISE_PATH.test(new URL(req.url).pathname)) return { status: 204, headers: [], body: empty, served: "noise" };
       return uncaptured(`no recording of ${method} ${new URL(req.url).pathname}`);
     }
 

@@ -1,16 +1,16 @@
 # Status (2026-11-18)
 
-Version 0.1.0. 38 automated tests pass on the test apps `fixtures/tiny-clinic` and `fixtures/tiny-news`. One public site
+Version 0.1.0. 44 automated tests pass on the test apps `fixtures/tiny-clinic` and `fixtures/tiny-news`. One public site
 (demo.playwright.dev/todomvc, HTTPS) was recorded and replayed with the network disabled, with no console errors.
 
 ## Built and tested
 
 | Stage | What works |
 |---|---|
-| Capture | A person's session, a scripted session (`--script`), or the crawl; `--after-reset` for test systems whose data was put back. Chrome with its own profile; every HTTP exchange with bodies; WebSocket frames; clicks, typing, submits; page snapshots (HTML + accessibility tree); HAR as a second copy; probe pass; session cookies kept between runs |
+| Capture | A person's session, a scripted session (`--script`), or the crawl; the browser's HTTP cache and the app's Cache API storage are emptied first so every file is recorded; `--after-reset` for test systems whose data was put back. Chrome with its own profile; every HTTP exchange with bodies; WebSocket frames; clicks, typing, submits; page snapshots (HTML + accessibility tree); HAR as a second copy; probe pass; session cookies kept between runs |
 | Explore | Automatic crawl with no model. UI gate and network gate; a 60-action run on the test app changed nothing in it |
 | Scrub | Cookies, tokens, passwords become placeholders. `--pii`: labelled fields and patterns replaced by consistent fakes |
-| Analyze | Endpoint clusters with `{id}` path templates, six classes, volatile fields, value flow, held-out split, a small OpenAPI file, endpoints named in JS but never seen |
+| Analyze | Endpoint clusters with `{id}` path templates (a segment is an id when it looks like one, takes many values, or the app's JSON names it as one), a `{path}` endpoint for a single-page app's shell, six classes, volatile fields, value flow, held-out split, a small OpenAPI file, endpoints named in JS but never seen |
 | Run | Replica behind a local intercepting proxy (HTTP and HTTPS) at the original URLs; Chrome launched with a DevTools port; a second client attached and used it; reset, state, log, ledger endpoints |
 | Stateful copy | Handler contract, SQLite, hand-written replica of the test app passes L1, L2 and L3 |
 | Verify | Deterministic comparison (JSON, HTML as DOM, volatile masks), ledger per endpoint and per action, replica hash check |
@@ -36,6 +36,18 @@ Version 0.1.0. 38 automated tests pass on the test apps `fixtures/tiny-clinic` a
   the generated files (icon paths, a label colour, filter links, counts) took the copy to 213 of 213 checks
   with 21 endpoints verified, and a new issue typed into the copy's browser is stored with its own title.
   The SDK stops a step only after the turn that passes its budget, so a build can end a little over `--max-usd`.
+  On 2026-11-19 it ran on a Grafana 11.6 in Docker, a single-page app over a JSON API: 122 endpoints recorded, of
+  which twelve needed a handler (three writes, the page shell, and the reads that change or take parameters),
+  built with `--cluster` for $2.70 under a $10 cap; the rest stay on replay. 111 of 111 checks pass, 70 endpoints
+  verified; a dashboard starred and another saved through the copy's browser are stored, shown on their pages and
+  in search, and gone after a reset, with nothing uncaptured in the log. Six faults in the tool came out of it,
+  all fixed: the capture hung on a response that never ends (an open stream) and now gives up after a bounded
+  wait; a profile's browser cache and Cache API storage hid the files the app already had, so they are emptied
+  when a capture starts; slug-like ids (`billing-queue`) were not templated, and are when the app's JSON names them;
+  the shell of a single-page app was one endpoint per address, and is now `GET /{path}`; the held-out check kept
+  back records whose content appears nowhere else, which no builder can write; and a redirect into the login or
+  token-refresh page shadowed the shell. Eight small hand edits to the generated files finished the copy (two sort
+  orders, a field type, one dashboard's panels, a timestamp precision, the id sequence, two head links).
 - **A large real app** (OpenEMR, OpenMRS). Expect problems with iframes, pop-up windows and server-built pages.
 
 ## Not built (in the plan, missing here)
