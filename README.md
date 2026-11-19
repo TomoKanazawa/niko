@@ -7,8 +7,6 @@ original URLs. Browser agents, computer-use agents and tool-calling agents run a
 real thing: no staging environment, no client access, nothing real gets changed, and a reset takes under a
 second. The tool tells you which actions in the copy are proven and which are not.
 
-![A recorded page of the test app, served by the copy while the real app is switched off](docs/public/copy-running.png)
-
 It runs on your machine. Nothing is sent to us. The only outside call is to Anthropic, with your own API key,
 and only when you run `niko build`.
 
