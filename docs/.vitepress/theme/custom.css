@@ -2,7 +2,7 @@
 :root {
   --vp-font-family-base: "Figtree", system-ui, -apple-system, sans-serif;
   --vp-font-family-mono: "IBM Plex Mono", ui-monospace, Menlo, monospace;
-  --ts-display: "Bricolage Grotesque", "Figtree", system-ui, sans-serif;
+  --ts-display: "Sora", "Figtree", system-ui, sans-serif;
 
   --vp-c-brand-1: #c2410c;
   --vp-c-brand-2: #ea580c;
@@ -46,8 +46,8 @@ h2,
 h3,
 .VPNavBarTitle .title {
   font-family: var(--ts-display);
-  font-weight: 700;
-  letter-spacing: -0.025em;
+  font-weight: 600;
+  letter-spacing: -0.03em;
 }
 
 .VPNavBarTitle .title {
