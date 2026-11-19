@@ -1,6 +1,6 @@
 # Status (2026-11-18)
 
-Version 0.1.0. 35 automated tests pass on the test apps `fixtures/tiny-clinic` and `fixtures/tiny-news`. One public site
+Version 0.1.0. 36 automated tests pass on the test apps `fixtures/tiny-clinic` and `fixtures/tiny-news`. One public site
 (demo.playwright.dev/todomvc, HTTPS) was recorded and replayed with the network disabled, with no console errors.
 
 ## Built and tested

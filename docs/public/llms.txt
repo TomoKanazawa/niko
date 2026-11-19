@@ -1,0 +1,17 @@
+# Niko
+
+> An exact working copy of any web app, as a sandbox for testing AI agents. Record a web app once, then run it as a local mock server that serves the app's own front-end at the app's original URLs. Browser agents, computer-use agents and tool-calling agents run against the copy instead of the real thing.
+
+Niko is an open-source command-line tool (Apache-2.0, TypeScript, Node 22, Playwright). It runs on your machine and sends nothing anywhere; the optional `niko build` step uses your own Anthropic API key to have a model write a stateful copy. Source: https://github.com/TomoKanazawa/niko
+
+## Documentation
+
+- [Tutorial](https://docs.useniko.com/tutorial): the whole tool in 15 minutes on a bundled test app, no account or API key needed
+- [Guide](https://docs.useniko.com/guide): using it on your own app, every command, the files, troubleshooting, limits
+- [For AI agents](https://docs.useniko.com/agents): how an AI agent should install, run and test the tool without a person
+- [Status](https://docs.useniko.com/status): what is built, what has been run on real apps, what is missing
+
+## Reference
+
+- [Handler contract](https://docs.useniko.com/contract): the interface a stateful copy's handlers follow
+- [File formats](https://docs.useniko.com/formats): captures, analysis, replica and report files

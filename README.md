@@ -2,16 +2,19 @@
 
 An exact working copy of any web app, as a sandbox for testing AI agents.
 
-You point it at a web app you can log in to. It records the app, builds a local copy that serves the app's own
-front-end at the app's original URLs, and tells you which actions in the copy are proven and which are not. Your
-agent then runs against the copy instead of the real thing: no client access needed, nothing real gets changed,
-and a reset takes under a second.
+Record a web app once, then run it as a local mock server that serves the app's own front-end at the app's
+original URLs. Browser agents, computer-use agents and tool-calling agents run against the copy instead of the
+real thing: no staging environment, no client access, nothing real gets changed, and a reset takes under a
+second. The tool tells you which actions in the copy are proven and which are not.
+
+![A recorded page of the test app, served by the copy while the real app is switched off](docs/public/copy-running.png)
 
 It runs on your machine. Nothing is sent to us. The only outside call is to Anthropic, with your own API key,
 and only when you run `niko build`.
 
-**Status: early.** Everything below works on the test app in this repo and passes its tests. It has not yet been
-run on a large real app. See [docs/STATUS.md](docs/STATUS.md) for what is built and what is not.
+**Status: early.** Everything below works on the test app in this repo and passes its tests, and it has been run
+once on a self-hosted Gitea. It has not yet been run on a large real app. See [docs/STATUS.md](docs/STATUS.md)
+for what is built and what is not.
 
 ## Documentation
 
