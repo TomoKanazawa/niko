@@ -8,7 +8,7 @@ import { type AppPaths, TOOL_VERSION, ensureDir, listCaptures, readJson, writeJs
 import type { VerifyResult } from "../verify/index.js";
 import { CONTRACT_MD, RUNTIME_DTS } from "./contract.js";
 import { prepareInput } from "./input.js";
-import { type AgentRunner, ClaudeRunner, type RunRequest } from "./runner.js";
+import { type AgentRunner, ClaudeRunner, type RunRequest, isBudgetStop, isStepOutcome } from "./runner.js";
 
 export interface BuildOptions {
   maxUsd?: number;
@@ -131,7 +131,9 @@ export async function build(paths: AppPaths, config: AppConfig, opts: BuildOptio
     ],
     checkCommand,
   };
-  const remaining = () => maxUsd - state.costUsd;
+  // Steps run a few at a time; each holds its allowance while it runs, so together they cannot pass the cap.
+  let reserved = 0;
+  const remaining = () => maxUsd - state.costUsd - reserved;
 
   /** One model call for one step, recorded in state. Returns false when the budget is spent. */
   const step = async (
@@ -145,16 +147,19 @@ export async function build(paths: AppPaths, config: AppConfig, opts: BuildOptio
     if (remaining() < 0.05) return false;
     s.attempts++;
     say(`${name}: started (attempt ${s.attempts})`);
+    const allowance = Math.max(0.05, Math.min(remaining(), share));
+    reserved += allowance;
     try {
       const r = await runner.run({
         ...base,
         step: name,
         prompt,
         model,
-        maxUsd: Math.max(0.05, Math.min(remaining(), share)),
+        maxUsd: allowance,
         maxTurns,
         resume: s.sessionId,
       });
+      reserved -= allowance;
       s.costUsd += r.costUsd;
       state.costUsd += r.costUsd;
       s.sessionId = r.sessionId ?? s.sessionId;
@@ -162,10 +167,12 @@ export async function build(paths: AppPaths, config: AppConfig, opts: BuildOptio
       s.error = r.error;
       s.lastText = r.text.slice(-600);
     } catch (e) {
+      reserved -= allowance;
       s.ok = false;
       s.error = (e as Error).message;
       save();
-      throw e;
+      // A step that ended on its own limit is a failed step, not a failed build. Anything else stops the build.
+      if (!isStepOutcome(s.error)) throw e;
     }
     save();
     say(`${name}: ${s.ok ? "finished" : `stopped (${s.error})`}, $${s.costUsd.toFixed(2)}`);
@@ -260,6 +267,14 @@ The check cannot test this endpoint (nothing was recorded); make sure the other 
       if (!(await step(name, config.models.implement, prompt, share, 60))) {
         outOfBudget = true;
         return;
+      }
+      // A large page can need more than one share. Give it one more go with twice as much, continuing its session.
+      if (isBudgetStop(state.steps[name]!.error) && remaining() > 2 * share + 0.05) {
+        say(`${name}: ran out of its share; trying once more with $${(2 * share).toFixed(2)}`);
+        if (!(await step(name, config.models.implement, prompt, 2 * share, 60))) {
+          outOfBudget = true;
+          return;
+        }
       }
       // The agent can end "ok" without writing the handler. Ask once more, then leave the step open.
       if (!hasRoute(c) && state.steps[name]!.ok) {

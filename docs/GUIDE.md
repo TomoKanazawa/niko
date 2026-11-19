@@ -419,9 +419,12 @@ Endpoints: 8 verified, 6 replayed-only, 0 inferred, 0 uncaptured, 1 external
 - `--yes` skips the question. The question is also skipped when the command is not run from a terminal.
 - `--resume` continues a build that was interrupted or ran out of money, without repeating finished steps.
 - `--cluster c_0003,c_0007` builds only those endpoints. The ids are in `niko report`.
+- Each endpoint gets a share of the cap, at least $0.50. A step that uses up its share is tried once more with
+  twice as much, and if it still does not finish the endpoint stays on replay; the build goes on with the others.
 
-The only measured build so far is the test app: 11 endpoints, about $1.10 and three minutes. A large app will
-cost more and may not finish cleanly; start with a low `--max-usd`.
+Measured builds so far: the test app, 11 endpoints, about $1.10 and three minutes; and a Gitea with 29 endpoints,
+where large server-built pages cost $0.40 to $0.50 each and some need more. A large app will cost more and may
+not finish cleanly; start with a low `--max-usd` and continue with `--resume`.
 
 ### Fix the copy by hand
 

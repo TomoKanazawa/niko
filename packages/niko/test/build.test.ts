@@ -85,6 +85,33 @@ describe("build supervisor", () => {
     expect(fresh.calls.length).toBeLessThanOrEqual(2);
   });
 
+  it("treats a step that runs out of its own share as a failed step, not a failed build", async () => {
+    // The SDK ends a step that hits its budget by throwing after the error result. One endpoint does that once.
+    class Overrun extends ScriptedRunner {
+      failed = false;
+      async run(req: RunRequest) {
+        if (req.step.startsWith("implement:") && !this.failed) {
+          this.failed = true;
+          this.calls.push(req);
+          throw new Error("Claude Code returned an error result: Reached maximum budget ($0.5)");
+        }
+        return super.run(req);
+      }
+    }
+    const runner = new Overrun();
+    const check = (clusters: string[] | undefined, write: boolean) =>
+      verify(ctx.paths, ctx.config, { write, onlyClusters: clusters });
+    const r = await build(ctx.paths, ctx.config, { runner, check, maxUsd: 20, parallel: 1 });
+    expect(r.stoppedBecause).toBe("done");
+    const first = runner.calls.findIndex((c) => c.step.startsWith("implement:"));
+    const retry = runner.calls[first + 1]!;
+    expect(retry.step).toBe(runner.calls[first]!.step);
+    expect(retry.maxUsd).toBeCloseTo(runner.calls[first]!.maxUsd * 2);
+    const state = readJson<BuildState>(join(ctx.paths.build, "state.json"));
+    expect(state.steps[retry.step]?.attempts).toBe(2);
+    expect(state.steps[retry.step]?.done).toBe(true);
+  });
+
   it("keeps the agent inside its box", () => {
     const req = {
       cwd: ctx.paths.root,

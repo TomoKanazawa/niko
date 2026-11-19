@@ -69,6 +69,14 @@ export function allowTool(
   return `${tool} is not available to the builder.`;
 }
 
+/** True for an SDK error that describes how one step ended, as opposed to the SDK failing to run at all. */
+export const isStepOutcome = (message: string) =>
+  /returned an error result|maximum budget|error_max_budget_usd|error_max_turns|max_turns/i.test(message);
+
+/** True when a step stopped because it ran out of its own budget. */
+export const isBudgetStop = (error: string | undefined) =>
+  !!error && /maximum budget|error_max_budget_usd/i.test(error);
+
 /** Runs a build step with the Claude Agent SDK, using the user's own Anthropic API key. */
 export class ClaudeRunner implements AgentRunner {
   async run(req: RunRequest): Promise<RunResult> {
@@ -100,17 +108,25 @@ export class ClaudeRunner implements AgentRunner {
         },
       },
     });
-    for await (const msg of stream) {
-      if (msg.type === "system" && msg.subtype === "init") sessionId = msg.session_id;
-      if (msg.type === "result") {
-        last = {
-          ok: msg.subtype === "success" && !msg.is_error,
-          costUsd: Number(msg.total_cost_usd ?? 0),
-          sessionId: msg.session_id ?? sessionId,
-          text: typeof msg.result === "string" ? msg.result : "",
-          error: msg.subtype === "success" ? undefined : String(msg.subtype),
-        };
+    try {
+      for await (const msg of stream) {
+        if (msg.type === "system" && msg.subtype === "init") sessionId = msg.session_id;
+        if (msg.type === "result") {
+          last = {
+            ok: msg.subtype === "success" && !msg.is_error,
+            costUsd: Number(msg.total_cost_usd ?? 0),
+            sessionId: msg.session_id ?? sessionId,
+            text: typeof msg.result === "string" ? msg.result : "",
+            error: msg.subtype === "success" ? undefined : String(msg.subtype),
+          };
+        }
       }
+    } catch (e) {
+      // When a step ends on an error result (its budget or turn limit, most often) the SDK throws after the
+      // result message. That is this step's outcome, not a fault in the build: report it, keep what it cost.
+      const message = (e as Error).message ?? String(e);
+      if (!isStepOutcome(message)) throw e;
+      return { ...last, ok: false, sessionId: last.sessionId ?? sessionId, error: message };
     }
     return last;
   }
