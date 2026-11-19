@@ -611,7 +611,10 @@ The full list is in [STATUS.md](STATUS.md). The ones you are most likely to meet
 - **Not yet run on a large real app.** Apps built from frames, pop-up windows and pages assembled on the server
   are the likely trouble spots.
 - **Chromium-based browsers only.**
-- **WebSockets and server-sent events are not replayed.** The copy refuses those connections.
+- **WebSockets and server-sent events are not replayed.** The copy refuses those connections. While recording,
+  an open stream is ignored when the tool waits for a page to settle after an action: an `EventSource`, a
+  `text/event-stream` response, or any response whose body is still arriving two seconds after its headers. A
+  request the server holds without sending headers at all is still waited for, up to the 10-second cap.
 - **Service workers are switched off** while recording.
 - **Exploring does not fill in forms**, so writes are learned only from a person's or a script's session.
 - **Requests the app never made are not guessed.** An endpoint nobody recorded answers `501`.
