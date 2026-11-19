@@ -43,7 +43,7 @@ export default defineConfig({
       "link",
       {
         rel: "stylesheet",
-        href: "https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap",
+        href: "https://fonts.googleapis.com/css2?family=Fredoka:wght@400;500;600&family=Nunito:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap",
       },
     ],
     ["meta", { name: "theme-color", content: "#0B0A09" }],
@@ -77,7 +77,7 @@ export default defineConfig({
   },
   themeConfig: {
     logo: "/logo.svg",
-    siteTitle: "Niko",
+    siteTitle: "niko",
     nav: [
       { text: "Tutorial", link: "/tutorial" },
       { text: "Guide", link: "/guide" },
