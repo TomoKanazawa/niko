@@ -87,6 +87,12 @@ assertions), `GET /log` (every request your agent made, including uncaptured one
   request before it leaves the browser. Unknown requests other than GET are blocked by default.
 - **Secrets never reach the model.** Cookies, tokens and passwords are replaced by placeholders before analysis.
 
+## Responsible use
+
+Use Niko only on applications you own or have permission to test. You are responsible for complying with the
+terms of service of any application you record, with applicable privacy and data-protection law, and for the
+data you collect. Niko is provided "as is", without warranty of any kind; see [LICENSE](LICENSE).
+
 ## Everything is a file you can edit
 
 `.niko/<app>/` holds the recordings, `policy.yaml`, the analysis, and the copy itself: `schema.sql`, `seed.sql`,
