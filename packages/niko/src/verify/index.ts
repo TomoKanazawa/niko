@@ -5,7 +5,7 @@ import { loadAnalysis } from "../analyze/index.js";
 import { firstDiff, normalizeBody } from "../analyze/normalize.js";
 import { Replica } from "../runtime/replica.js";
 import type { AppConfig, Ledger, LedgerEntry, LedgerLabel } from "../types.js";
-import { type AppPaths, contentType, header, isTextType, sha256, writeJson } from "../util.js";
+import { type AppPaths, contentType, header, isTextType, readJson, sha256, writeJson } from "../util.js";
 
 /** Hash of everything the builder can change. A change during verification fails the run. */
 export function replicaHash(paths: AppPaths): string {
@@ -89,6 +89,17 @@ export async function verify(
         : a.capture.localeCompare(b.capture),
     );
 
+  // Exchange times are milliseconds from the start of their capture.
+  const starts = new Map<string, number>();
+  const captureStart = (capture: string) => {
+    let t = starts.get(capture);
+    if (t === undefined) {
+      const file = join(paths.captures, capture, "manifest.json");
+      t = existsSync(file) ? new Date(readJson<{ startedAt: string }>(file).startedAt).getTime() : Date.now();
+      starts.set(capture, t);
+    }
+    return t;
+  };
   let checked = 0;
   let passed = 0;
   let inCapture = "";
@@ -102,6 +113,8 @@ export async function verify(
     for (const [k, v] of x.reqHeaders)
       if (!/^(content-length|host|connection|accept-encoding)$/i.test(k) && !k.startsWith(":"))
         headers[k.toLowerCase()] = v;
+    // A write handler stamps records with ctx.now(); the recording shows the real app's time for the same write.
+    replica.setClock(captureStart(x.capture) + x.ts);
     const res = await replica.handle({
       method: x.method,
       url: x.url,

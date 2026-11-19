@@ -229,6 +229,12 @@ export class Replica {
     return this.opts.clock === "today" ? new Date() : new Date(this.captureEnd + (Date.now() - this.startedAt));
   }
 
+  /** Move the sandbox clock to a moment in the recordings. The checker sets it to each exchange's recorded time. */
+  setClock(epochMs: number) {
+    this.captureEnd = epochMs;
+    this.startedAt = Date.now();
+  }
+
   async handle(req: SandboxRequest): Promise<SandboxResponse> {
     const res = await this.answer(req).catch(
       (e: Error): SandboxResponse => ({

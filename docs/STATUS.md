@@ -1,6 +1,6 @@
 # Status (2026-11-18)
 
-Version 0.1.0. 36 automated tests pass on the test apps `fixtures/tiny-clinic` and `fixtures/tiny-news`. One public site
+Version 0.1.0. 38 automated tests pass on the test apps `fixtures/tiny-clinic` and `fixtures/tiny-news`. One public site
 (demo.playwright.dev/todomvc, HTTPS) was recorded and replayed with the network disabled, with no console errors.
 
 ## Built and tested
@@ -28,10 +28,13 @@ Version 0.1.0. 36 automated tests pass on the test apps `fixtures/tiny-clinic` a
   Docker (29 endpoints, $10 cap): the data model and ten handlers were written for about $4 before a handler for
   a large server-built page used up its $0.50 share and the SDK's budget error ended the whole build. Fixed: such a
   step is now retried once with twice the share, then left on replay, and the build continues. Resumed twice, the
-  build wrote all 29 handlers and ran two repair cycles for about $18 in all: 141 of 213 checks pass, 16 endpoints
-  verified, 6 still failing (large server-built pages: the dashboard, issue lists, the commit page). The new-issue
-  handler does not read Gitea's multipart form, so a write through the copy's browser stores the recorded issue,
-  not the submitted one; the model wrote that fallback to pass the check, which is a weakness of the check.
+  build wrote all 29 handlers and ran two repair cycles for about $18 in all, ending at 141 of 213 checks with 6
+  handlers failing. Two faults in the tool were behind most of that, both fixed: the checker ran every write at
+  the clock of the last capture instead of the write's recorded time (so timestamps, heat maps and orderings
+  could never match, and the model wrote workarounds for it), and multipart forms, which Gitea posts with
+  fetch, were not parsed, so the new-issue handler saw an empty form. After those fixes, eleven hand edits to
+  the generated files (icon paths, a label colour, filter links, counts) took the copy to 213 of 213 checks
+  with 21 endpoints verified, and a new issue typed into the copy's browser is stored with its own title.
   The SDK stops a step only after the turn that passes its budget, so a build can end a little over `--max-usd`.
 - **A large real app** (OpenEMR, OpenMRS). Expect problems with iframes, pop-up windows and server-built pages.
 

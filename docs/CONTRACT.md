@@ -60,7 +60,7 @@ export interface RouteContext {
   /** Values of the {id} segments of the endpoint's path template, in order, URL-decoded. Always strings. */
   params: string[];
   query: Record<string, string>;
-  /** Parsed application/x-www-form-urlencoded body, or {}. */
+  /** Parsed form body (application/x-www-form-urlencoded or multipart/form-data; a file part is its file name), or {}. */
   form: Record<string, string>;
   /** Parsed JSON body, or undefined. */
   json: any;

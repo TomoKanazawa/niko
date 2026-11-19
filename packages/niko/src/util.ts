@@ -32,7 +32,8 @@ export function contentType(headers: Headers): string {
 }
 
 export const isTextType = (ct: string) =>
-  /^text\/|json|javascript|xml|x-www-form-urlencoded|svg|html/.test(ct) && !/font|octet/.test(ct);
+  /^text\/|json|javascript|xml|x-www-form-urlencoded|multipart\/form-data|svg|html/.test(ct) &&
+  !/font|octet/.test(ct);
 
 /** Content-addressed body store. */
 export class BodyStore {
@@ -204,5 +205,25 @@ export function parseBody(ct: string, text: string): { form?: Record<string, str
     for (const [k, v] of new URLSearchParams(text)) form[k] = v;
     return { form };
   }
+  const multipart = /multipart\/form-data.*boundary=("?)([^";]+)\1/i.exec(ct);
+  if (multipart) return { form: parseMultipart(text, multipart[2]!) };
   return {};
+}
+
+/**
+ * Fields of a multipart/form-data body, as browsers send them for forms posted with fetch or an upload control.
+ * A file part is kept as its file name, so a handler can tell that something was attached.
+ */
+export function parseMultipart(text: string, boundary: string): Record<string, string> {
+  const form: Record<string, string> = {};
+  for (const part of text.split(`--${boundary}`)) {
+    const sep = part.indexOf("\r\n\r\n");
+    if (sep < 0) continue;
+    const head = part.slice(0, sep);
+    const name = /name="([^"]*)"/.exec(head)?.[1];
+    if (name === undefined) continue;
+    const file = /filename="([^"]*)"/.exec(head)?.[1];
+    form[name] = file !== undefined ? file : part.slice(sep + 4).replace(/\r\n$/, "");
+  }
+  return form;
 }
