@@ -1,8 +1,8 @@
 /* The same look as useniko.com: near-black, warm greys, one orange. */
 :root {
-  --vp-font-family-base: "Nunito", system-ui, -apple-system, sans-serif;
+  --vp-font-family-base: "Figtree", system-ui, -apple-system, sans-serif;
   --vp-font-family-mono: "IBM Plex Mono", ui-monospace, Menlo, monospace;
-  --ts-display: "Fredoka", "Nunito", system-ui, sans-serif;
+  --ts-display: "Bricolage Grotesque", "Figtree", system-ui, sans-serif;
 
   --vp-c-brand-1: #c2410c;
   --vp-c-brand-2: #ea580c;
@@ -46,8 +46,8 @@ h2,
 h3,
 .VPNavBarTitle .title {
   font-family: var(--ts-display);
-  font-weight: 600;
-  letter-spacing: 0;
+  font-weight: 700;
+  letter-spacing: -0.025em;
 }
 
 .VPNavBarTitle .title {
@@ -56,8 +56,8 @@ h3,
 
 .vp-doc h1 {
   font-size: 2.2rem;
-  line-height: 1.15;
-  letter-spacing: -0.005em;
+  line-height: 1.12;
+  letter-spacing: -0.03em;
 }
 
 .vp-doc h2 {
