@@ -60,11 +60,11 @@ export class BodyStore {
 
 // ---------- locations ----------
 
-/** The .sandbox folder for a working directory. Works from inside it too, which is where the builder's agents run. */
+/** The .niko folder for a working directory. Works from inside it too, which is where the builder's agents run. */
 export function sandboxRoot(cwd = process.cwd()) {
   const parts = resolve(cwd).split(sep);
-  const at = parts.lastIndexOf(".sandbox");
-  return at >= 0 ? parts.slice(0, at + 1).join(sep) : resolve(cwd, ".sandbox");
+  const at = parts.lastIndexOf(".niko");
+  return at >= 0 ? parts.slice(0, at + 1).join(sep) : resolve(cwd, ".niko");
 }
 
 export function appNameFromUrl(url: string) {
@@ -89,7 +89,7 @@ export function appPaths(app: string, cwd = process.cwd()): AppPaths {
   const root = join(sandboxRoot(cwd), app);
   return {
     root,
-    config: join(root, "sandbox.config.yaml"),
+    config: join(root, "niko.config.yaml"),
     profile: join(root, "profile"),
     captures: join(root, "captures"),
     analysis: join(root, "analysis"),
@@ -102,17 +102,17 @@ export function appPaths(app: string, cwd = process.cwd()): AppPaths {
   };
 }
 
-/** Pick the app: explicit name, or the only one under .sandbox/. */
+/** Pick the app: explicit name, or the only one under .niko/. */
 export function resolveApp(name?: string, cwd = process.cwd()): string {
   if (name) return name;
   const root = sandboxRoot(cwd);
   const apps = existsSync(root)
     ? readdirSync(root, { withFileTypes: true })
-        .filter((d) => d.isDirectory() && existsSync(join(root, d.name, "sandbox.config.yaml")))
+        .filter((d) => d.isDirectory() && existsSync(join(root, d.name, "niko.config.yaml")))
         .map((d) => d.name)
     : [];
   if (apps.length === 1) return apps[0]!;
-  if (apps.length === 0) throw new Error("No app found. Run `sandbox init <url>` first.");
+  if (apps.length === 0) throw new Error("No app found. Run `niko init <url>` first.");
   throw new Error(`Several apps found (${apps.join(", ")}). Pass --app <name>.`);
 }
 
@@ -165,7 +165,7 @@ export function loadBundle(paths: AppPaths, id: string, scrubbed = true): Bundle
   const base = join(paths.captures, id);
   const dir = scrubbed ? join(base, "scrubbed") : base;
   if (scrubbed && !existsSync(join(dir, "episodes")))
-    throw new Error(`Capture ${id} has not been scrubbed. Run \`sandbox scrub\`.`);
+    throw new Error(`Capture ${id} has not been scrubbed. Run \`niko scrub\`.`);
   return {
     dir,
     manifest: readJson<Manifest>(join(base, "manifest.json")),

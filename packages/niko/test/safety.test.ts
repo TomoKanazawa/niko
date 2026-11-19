@@ -49,7 +49,7 @@ describe("unattended exploration of tiny-clinic", () => {
 
   beforeAll(async () => {
     clinic = await startClinic();
-    // Log in once (as the user does with `sandbox init`), then explore with the saved session.
+    // Log in once (as the user does with `niko init`), then explore with the saved session.
     ctx = await captureClinic(clinic, "script", { script: login, probe: false });
     before = JSON.stringify(clinic.state());
     const { capture } = await import("../src/capture/index.js");

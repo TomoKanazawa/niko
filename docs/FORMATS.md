@@ -1,9 +1,9 @@
 # File formats
 
-Everything lives under `.sandbox/<app>/` on your machine. The types are in `packages/sandbox/src/types.ts`.
+Everything lives under `.niko/<app>/` on your machine. The types are in `packages/niko/src/types.ts`.
 
 ```
-sandbox.config.yaml      start URL, origins in scope, models, budgets
+niko.config.yaml      start URL, origins in scope, models, budgets
 policy.yaml              read or write decision per endpoint; `by: user` entries are never overwritten
 pseudonyms.json          real value -> replacement. Never leaves the machine
 session-cookies.json     session cookies of the capture profile. Treat like a password
@@ -45,7 +45,7 @@ run/                     the running copy's database and Chrome profile
 | session | Login, logout, keep-alive | The recorded success, whatever was typed |
 | noise | Analytics, telemetry | Empty `204` |
 | external | An address outside the origins in scope | `502` |
-| uncaptured | Never observed | `501`, header `X-Sandbox: uncaptured` |
+| uncaptured | Never observed | `501`, header `X-Niko: uncaptured` |
 
 ## Ledger labels
 

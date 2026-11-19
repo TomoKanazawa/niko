@@ -1,6 +1,6 @@
 # Tutorial: the whole tool in 15 minutes
 
-This walks through every part of Thousand Sandbox on a small test app that ships in this repository. It needs
+This walks through every part of Niko on a small test app that ships in this repository. It needs
 no account, no outside website and no person at the keyboard. Only step 9 uses a model and costs money (about
 $1); you can skip it.
 
@@ -16,18 +16,18 @@ You need Node 22.13 or newer, pnpm 9 or newer, and Google Chrome. Tested on macO
 untested.
 
 ```bash
-git clone https://github.com/TomoKanazawa/thousand-sandbox.git
-cd thousand-sandbox
+git clone https://github.com/TomoKanazawa/niko.git
+cd niko
 pnpm install
 pnpm build
 ```
 
-The command is `bin/sandbox` inside the clone. To keep the rest of this page short, store its full path in a
+The command is `bin/niko` inside the clone. To keep the rest of this page short, store its full path in a
 variable. Replace the path with yours:
 
 ```bash
-REPO=/absolute/path/to/thousand-sandbox
-SB=$REPO/bin/sandbox
+REPO=/absolute/path/to/niko
+SB=$REPO/bin/niko
 ```
 
 If your shell does not keep variables between commands (many agent tools do not), write the full path each
@@ -42,15 +42,15 @@ $SB doctor
 ```
 ok   Node 22.18.0
 ok   Google Chrome
-FAIL ANTHROPIC_API_KEY (needed for `sandbox build` only)  -> export ANTHROPIC_API_KEY=...
-ok   Claude Agent SDK (needed for `sandbox build` only)
+FAIL ANTHROPIC_API_KEY (needed for `niko build` only)  -> export ANTHROPIC_API_KEY=...
+ok   Claude Agent SDK (needed for `niko build` only)
 ok   Memory 36 GB
 ok   Disk 238 GB free
 ok   Docker (optional)
 ```
 
 A `FAIL` on `ANTHROPIC_API_KEY` is fine until step 9 (it shows `ok` if a key is already set on your machine). If Chrome is missing, install it or run
-`pnpm --filter thousand-sandbox exec playwright install chromium`.
+`pnpm --filter useniko exec playwright install chromium`.
 
 ## 1. Start the test app
 
@@ -69,17 +69,17 @@ tiny-clinic on http://127.0.0.1:4010  (any user, password "test-password")
 
 ## 2. Make a working folder and set up the app
 
-The tool keeps everything for an app in a `.sandbox/` folder inside the folder you run it from. Make an empty
+The tool keeps everything for an app in a `.niko/` folder inside the folder you run it from. Make an empty
 folder and run every later command from it:
 
 ```bash
-mkdir ~/sandbox-tutorial && cd ~/sandbox-tutorial
+mkdir ~/niko-tutorial && cd ~/niko-tutorial
 $SB init http://127.0.0.1:4010/ --no-login
 ```
 
 ```
-Created /Users/you/sandbox-tutorial/.sandbox/127.0.0.1_4010
-Next: sandbox capture
+Created /Users/you/niko-tutorial/.niko/127.0.0.1_4010
+Next: niko capture
 ```
 
 `--no-login` skips the step where a person logs in by hand in a browser window. The next step logs in from a
@@ -97,7 +97,7 @@ $SB capture --script $REPO/fixtures/tiny-clinic/session.mjs --headless
 ```
 Probe pass: 16 of 16 safe GETs repeated.
 Capture 20261111-200618 saved. 55 exchanges in 15 endpoints so far.
-Next: sandbox up (replay as recorded), or sandbox build (make it stateful).
+Next: niko up (replay as recorded), or niko build (make it stateful).
 ```
 
 An **exchange** is one request and its response. An **endpoint** is a group of requests of the same kind, for
@@ -114,7 +114,7 @@ $SB analyze
 Endpoints: 15  (static 2, read 8, write 3, session 1, noise 1)
 Exchanges: 55; kept back for checking: 10; read-after-write checks: 3
 Named in the app's code but never seen (3): /notes, /sign, /ws
-Files: /Users/you/sandbox-tutorial/.sandbox/127.0.0.1_4010/analysis
+Files: /Users/you/niko-tutorial/.niko/127.0.0.1_4010/analysis
 ```
 
 - **static, read, write, session, noise** are the kinds of endpoint. The copy treats each kind differently.
@@ -179,7 +179,7 @@ curl -s http://127.0.0.1:8878/health
 ## 6. Attach an agent
 
 Any tool that can attach to a running Chrome uses the copy with no code change. The repository has a short
-Playwright example, [`packages/sandbox/examples/attach.mjs`](../packages/sandbox/examples/attach.mjs). Its core is
+Playwright example, [`packages/niko/examples/attach.mjs`](../packages/niko/examples/attach.mjs). Its core is
 three lines:
 
 ```js
@@ -191,7 +191,7 @@ await page.goto("http://127.0.0.1:4010/patients/102");
 Run it:
 
 ```bash
-node $REPO/packages/sandbox/examples/attach.mjs
+node $REPO/packages/niko/examples/attach.mjs
 ```
 
 ```
@@ -201,7 +201,7 @@ a page that was never recorded: 501 uncaptured
 
 The first line is a real page of the app, served by the copy while the app is off. The second shows the rule
 the copy follows: **it never makes an answer up.** A request it has no recording for gets status `501` and the
-header `X-Sandbox: uncaptured`.
+header `X-Niko: uncaptured`.
 
 See what was asked of the copy:
 
@@ -250,7 +250,7 @@ $SB capture --script $REPO/fixtures/tiny-clinic/session.mjs --headless --after-r
 ```
 Probe pass: 16 of 16 safe GETs repeated.
 Capture 20261111-203219 saved. 111 exchanges in 15 endpoints so far.
-Next: sandbox up (replay as recorded), or sandbox build (make it stateful).
+Next: niko up (replay as recorded), or niko build (make it stateful).
 ```
 
 Without `--after-reset` the tool assumes each recording continues from where the last one ended, as it does on
@@ -274,7 +274,7 @@ $SB capture --explore --headless --max-actions 25
 Explored 7 states with 24 actions; refused 7 controls.
 Probe pass: 26 of 26 safe GETs repeated.
 Capture 20261111-202147 saved. 280 exchanges in 15 endpoints so far.
-Next: sandbox up (replay as recorded), or sandbox build (make it stateful).
+Next: niko up (replay as recorded), or niko build (make it stateful).
 ```
 
 **Refused 7 controls** are buttons it would not press, such as "Save changes", "Delete" and "Sign and send
@@ -293,8 +293,8 @@ show it. Step 9 has a model write these files. To see the result without paying 
 written by hand for this test app:
 
 ```bash
-mkdir -p .sandbox/127.0.0.1_4010/replica
-cp -R $REPO/fixtures/tiny-clinic/replica/. .sandbox/127.0.0.1_4010/replica/
+mkdir -p .niko/127.0.0.1_4010/replica
+cp -R $REPO/fixtures/tiny-clinic/replica/. .niko/127.0.0.1_4010/replica/
 $SB verify
 ```
 
@@ -310,7 +310,7 @@ Run it and write something. The test app can stay running; the copy's Chrome nev
 example, which adds a note to a patient through the browser:
 
 ```bash
-node $REPO/packages/sandbox/examples/write-note.mjs
+node $REPO/packages/niko/examples/write-note.mjs
 ```
 
 ```
@@ -351,7 +351,7 @@ Remove the hand-written copy, and give the tool an Anthropic API key in a file n
 folder:
 
 ```bash
-rm -rf .sandbox/127.0.0.1_4010/replica
+rm -rf .niko/127.0.0.1_4010/replica
 printf 'ANTHROPIC_API_KEY=%s\n' "your-key-here" > .env
 $SB build --max-usd 5 --yes
 ```
@@ -440,7 +440,7 @@ Put the test app back with `curl -s -X POST http://127.0.0.1:4010/__test/variant
 ```bash
 $SB down                      # if a copy is still running
 pkill -f tiny-clinic/server.mjs
-rm -rf ~/sandbox-tutorial
+rm -rf ~/niko-tutorial
 ```
 
 ## Next

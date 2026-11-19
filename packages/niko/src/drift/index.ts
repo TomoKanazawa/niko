@@ -29,7 +29,7 @@ export interface DriftReport {
 
 export class SessionExpired extends Error {
   constructor() {
-    super("The app's session has expired. Run `sandbox login` and try again.");
+    super("The app's session has expired. Run `niko login` and try again.");
   }
 }
 
@@ -354,7 +354,7 @@ export function adoptDriftCapture(paths: AppPaths, captureId: string) {
 /** Write a daily job definition. Returns the file and the command that turns it on. */
 export function scheduleDaily(cwd: string, app: string, cli: string, hour = 6): { file: string; enable: string } {
   if (process.platform === "darwin") {
-    const label = `com.thousand.sandbox.drift.${app.replace(/[^a-z0-9]/gi, "-")}`;
+    const label = `com.useniko.niko.drift.${app.replace(/[^a-z0-9]/gi, "-")}`;
     const file = join(ensureDir(join(homedir(), "Library", "LaunchAgents")), `${label}.plist`);
     writeFileSync(
       file,
@@ -365,15 +365,15 @@ export function scheduleDaily(cwd: string, app: string, cli: string, hour = 6): 
   <key>ProgramArguments</key><array><string>${process.execPath}</string><string>${cli}</string><string>drift</string><string>--app</string><string>${app}</string><string>--headless</string></array>
   <key>WorkingDirectory</key><string>${cwd}</string>
   <key>StartCalendarInterval</key><dict><key>Hour</key><integer>${hour}</integer><key>Minute</key><integer>0</integer></dict>
-  <key>StandardOutPath</key><string>${join(cwd, ".sandbox", app, "drift", "schedule.log")}</string>
-  <key>StandardErrorPath</key><string>${join(cwd, ".sandbox", app, "drift", "schedule.log")}</string>
+  <key>StandardOutPath</key><string>${join(cwd, ".niko", app, "drift", "schedule.log")}</string>
+  <key>StandardErrorPath</key><string>${join(cwd, ".niko", app, "drift", "schedule.log")}</string>
 </dict></plist>
 `,
     );
     return { file, enable: `launchctl load ${file}` };
   }
-  const file = join(ensureDir(join(cwd, ".sandbox", app, "drift")), "cron.txt");
-  const line = `0 ${hour} * * * cd ${cwd} && ${process.execPath} ${cli} drift --app ${app} --headless >> ${join(cwd, ".sandbox", app, "drift", "schedule.log")} 2>&1`;
+  const file = join(ensureDir(join(cwd, ".niko", app, "drift")), "cron.txt");
+  const line = `0 ${hour} * * * cd ${cwd} && ${process.execPath} ${cli} drift --app ${app} --headless >> ${join(cwd, ".niko", app, "drift", "schedule.log")} 2>&1`;
   writeFileSync(file, `${line}\n`);
   return { file, enable: `(crontab -l 2>/dev/null; cat ${file}) | crontab -` };
 }

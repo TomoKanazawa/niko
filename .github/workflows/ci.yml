@@ -15,7 +15,7 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm --filter thousand-sandbox exec playwright install --with-deps chromium
+      - run: pnpm --filter useniko exec playwright install --with-deps chromium
       - run: pnpm build
       - run: pnpm test
       - run: pnpm docs:build

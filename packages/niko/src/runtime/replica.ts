@@ -234,13 +234,13 @@ export class Replica {
       (e: Error): SandboxResponse => ({
         status: 500,
         headers: [["content-type", "text/plain"]],
-        body: Buffer.from(`sandbox error: ${e.message}`),
+        body: Buffer.from(`niko error: ${e.message}`),
         served: "error",
       }),
     );
     res.headers = res.headers.filter(([k]) => !DROP_HEADERS.test(k));
-    res.headers.push(["x-sandbox", res.served]);
-    if (res.cluster) res.headers.push(["x-sandbox-cluster", res.cluster]);
+    res.headers.push(["x-niko", res.served]);
+    if (res.cluster) res.headers.push(["x-niko-cluster", res.cluster]);
     const entry: LogEntry = {
       n: this.log.length + 1,
       at: new Date().toISOString(),
@@ -292,7 +292,7 @@ export class Replica {
         return {
           status: 502,
           headers: [["content-type", "text/plain"]],
-          body: Buffer.from("sandbox: request to a host outside the copy"),
+          body: Buffer.from("niko: request to a host outside the copy"),
           served: "external",
         };
       // Browsers ask for /favicon.ico by themselves. An app that has none is not missing a recording.
@@ -454,9 +454,9 @@ function uncaptured(why: string): SandboxResponse {
     status: 501,
     headers: [
       ["content-type", "text/plain"],
-      ["x-sandbox-reason", why.slice(0, 200)],
+      ["x-niko-reason", why.slice(0, 200)],
     ],
-    body: Buffer.from(`sandbox: uncaptured. ${why}`),
+    body: Buffer.from(`niko: uncaptured. ${why}`),
     served: "uncaptured",
   };
 }

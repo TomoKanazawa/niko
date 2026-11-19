@@ -1,5 +1,5 @@
 // Add a note to a patient in the copy of the test app, to show that a stateful copy keeps what is written.
-//   node packages/sandbox/examples/write-note.mjs [devtools-address]
+//   node packages/niko/examples/write-note.mjs [devtools-address]
 import { chromium } from "playwright";
 
 const browser = await chromium.connectOverCDP(process.argv[2] ?? "http://127.0.0.1:9333");

@@ -1,5 +1,5 @@
 {
-  "name": "thousand-sandbox-workspace",
+  "name": "niko-workspace",
   "private": true,
   "packageManager": "pnpm@9.15.0",
   "engines": {
@@ -10,7 +10,7 @@
     "test": "vitest run",
     "typecheck": "pnpm -r exec tsc --noEmit -p tsconfig.json",
     "lint": "biome check .",
-    "sandbox": "node packages/sandbox/dist/cli.js",
+    "niko": "node packages/niko/dist/cli.js",
     "docs:dev": "vitepress dev docs",
     "docs:build": "vitepress build docs",
     "docs:preview": "vitepress preview docs",

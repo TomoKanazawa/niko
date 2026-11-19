@@ -3,7 +3,7 @@ import { join } from "node:path";
 import type { AppConfig } from "./types.js";
 import { type AppPaths, appNameFromUrl, appPaths, ensureDir, saveConfig } from "./util.js";
 
-/** Create `.sandbox/<app>/` and its config. */
+/** Create `.niko/<app>/` and its config. */
 export function initApp(
   url: string,
   opts: { cwd?: string; app?: string; origins?: string[]; realAccount?: boolean } = {},
@@ -29,8 +29,8 @@ export function initApp(
     !existsSync(gi) ||
     !readFileSync(gi, "utf8")
       .split("\n")
-      .some((l) => l.trim() === ".sandbox/")
+      .some((l) => l.trim() === ".niko/")
   )
-    appendFileSync(gi, `${existsSync(gi) ? "\n" : ""}.sandbox/\n`);
+    appendFileSync(gi, `${existsSync(gi) ? "\n" : ""}.niko/\n`);
   return { paths, config };
 }

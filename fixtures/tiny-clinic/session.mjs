@@ -1,4 +1,4 @@
-// A recording session for the test app, for `sandbox capture --script fixtures/tiny-clinic/session.mjs`.
+// A recording session for the test app, for `niko capture --script fixtures/tiny-clinic/session.mjs`.
 // It logs in, reads four patients, and makes each kind of change once: add a note, delete it, edit a phone number,
 // run a search. Use it as a template for your own app: the function receives a Playwright page already open at the
 // app's start URL.

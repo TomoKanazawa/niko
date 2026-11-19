@@ -21,7 +21,7 @@ Version 0.1.0. 35 automated tests pass on the test apps `fixtures/tiny-clinic` a
 
 ## Not yet run
 
-- **`sandbox build` on a real app.** It ran with a real model on the test clinic only (2026-11-11, twice): all 11
+- **`niko build` on a real app.** It ran with a real model on the test clinic only (2026-11-11, twice): all 11
   handlers written, 23 of 23 checks pass, 8 endpoints verified and 6 replayed-only, one repair cycle, about $1.10 and
   three minutes per run. The first run exposed two faults, both fixed: the agents could not run the check from their
   working folder, and a step could end without writing its handler. Nothing larger has been built.

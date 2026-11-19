@@ -28,7 +28,7 @@ async function ensureCa(paths: AppPaths) {
   const certFile = join(paths.ca, "ca.pem");
   if (!existsSync(keyFile) || !existsSync(certFile)) {
     const ca = await mockttp.generateCACertificate({
-      subject: { commonName: "Thousand Sandbox local CA", organizationName: "Thousand Sandbox (this machine only)" },
+      subject: { commonName: "Niko local CA", organizationName: "Niko (this machine only)" },
       bits: 2048,
     });
     writeFileSync(keyFile, ca.key, { mode: 0o600 });
@@ -63,7 +63,7 @@ export async function up(paths: AppPaths, config: AppConfig, opts: UpOptions = {
     // The proxy library listens on every network interface; answer this machine only.
     const from = req.remoteIpAddress ?? "";
     if (from && !/^(127\.|::1$|::ffff:127\.)/.test(from))
-      return { statusCode: 403, body: "sandbox: local connections only" };
+      return { statusCode: 403, body: "niko: local connections only" };
     const headers: Record<string, string> = {};
     for (const [k, v] of Object.entries(req.headers))
       if (v !== undefined)
@@ -78,7 +78,7 @@ export async function up(paths: AppPaths, config: AppConfig, opts: UpOptions = {
     }
     return { statusCode: res.status, headers: out, rawBody: res.body };
   });
-  await proxy.forAnyWebSocket().thenRejectConnection(501, "sandbox: WebSocket replay is not built yet");
+  await proxy.forAnyWebSocket().thenRejectConnection(501, "niko: WebSocket replay is not built yet");
 
   let ready = false;
   const control = http.createServer((req, res) => {
@@ -94,7 +94,7 @@ export async function up(paths: AppPaths, config: AppConfig, opts: UpOptions = {
     if (path === "/state") return send(200, replica.state());
     if (path === "/log") return send(200, replica.log);
     if (path === "/ledger")
-      return send(200, replica.ledger() ?? { error: "no ledger yet; run `sandbox build` or `sandbox verify`" });
+      return send(200, replica.ledger() ?? { error: "no ledger yet; run `niko build` or `niko verify`" });
     // ok turns true only once the proxy and (when launched) Chrome are ready, so a script can wait on it.
     if (path === "/health") return send(200, { ok: ready, app: config.app, endpoints: replica.clusters.length });
     send(404, {

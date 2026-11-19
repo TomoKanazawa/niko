@@ -1,5 +1,5 @@
-// Attach to the Chrome that `sandbox up` started and use the copy of the test app.
-//   node packages/sandbox/examples/attach.mjs [devtools-address]
+// Attach to the Chrome that `niko up` started and use the copy of the test app.
+//   node packages/niko/examples/attach.mjs [devtools-address]
 // In your own project this is all an agent framework needs: connect over CDP instead of launching a browser.
 import { chromium } from "playwright";
 
@@ -12,6 +12,6 @@ await page.waitForSelector("#notes li");
 console.log("title:", await page.title(), "| notes:", await page.locator("#notes li").count());
 
 const res = await page.goto("http://127.0.0.1:4010/patients/999");
-console.log("a page that was never recorded:", res.status(), res.headers()["x-sandbox"]);
+console.log("a page that was never recorded:", res.status(), res.headers()["x-niko"]);
 
 await browser.close(); // disconnects; the copy's Chrome keeps running

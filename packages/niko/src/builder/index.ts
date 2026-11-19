@@ -94,7 +94,7 @@ const describeFailures = (r: VerifyResult, cluster?: string, limit = 6) => {
  * only deterministic code judge the result.
  */
 export async function build(paths: AppPaths, config: AppConfig, opts: BuildOptions = {}): Promise<BuildResult> {
-  if (!existsSync(join(paths.analysis, "clusters.json"))) throw new Error("Run `sandbox analyze` first.");
+  if (!existsSync(join(paths.analysis, "clusters.json"))) throw new Error("Run `niko analyze` first.");
   const cwd = resolve(paths.root, "..", "..");
   const runner = opts.runner ?? new ClaudeRunner();
   const check = opts.check ?? childCheck(paths, config.app, cwd);

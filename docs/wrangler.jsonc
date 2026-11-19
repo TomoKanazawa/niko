@@ -4,7 +4,10 @@
   "name": "thousand-sandbox-docs",
   "compatibility_date": "2026-11-10",
   // The site's address. Cloudflare creates the DNS record and the certificate.
-  "routes": [{ "pattern": "docs.usethousand.com", "custom_domain": true }],
+  "routes": [
+    { "pattern": "docs.useniko.com", "custom_domain": true },
+    { "pattern": "docs.usethousand.com", "custom_domain": true }
+  ],
   "assets": {
     "directory": "./.vitepress/dist",
     "html_handling": "auto-trailing-slash",

@@ -257,7 +257,7 @@ function classify(
 export function analyze(paths: AppPaths, config: AppConfig): Analysis {
   const corpus = loadCorpus(paths, config);
   const exs = corpus.exchanges;
-  if (!exs.length) throw new Error("No captured exchanges. Run `sandbox capture` first.");
+  if (!exs.length) throw new Error("No captured exchanges. Run `niko capture` first.");
   const policyFile = join(paths.root, "policy.yaml");
   const policy: Policy = existsSync(policyFile) ? ((YAML.parse(readFileSyncText(policyFile)) as Policy) ?? {}) : {};
 
@@ -557,7 +557,7 @@ export function openApi(clusters: Cluster[], corpus: Corpus) {
     pathsObj[path] ??= {};
     pathsObj[path]![c.method.toLowerCase()] = {
       operationId: c.id,
-      "x-sandbox-class": c.class,
+      "x-niko-class": c.class,
       ...(c.discriminator ? { "x-discriminator": c.discriminator } : {}),
       responses: { [String(x.status)]: { description: "observed", content: { "application/json": { schema } } } },
     };

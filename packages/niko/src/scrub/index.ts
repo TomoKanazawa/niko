@@ -21,7 +21,7 @@ import {
  *
  * mode "secrets": session cookies, tokens and passwords become typed placeholders (SBX_SESSION_1, ...).
  * mode "pii": also replaces personal data with consistent fakes of the same shape.
- * Automated de-identification is not a guarantee; review with `sandbox scrub --review`.
+ * Automated de-identification is not a guarantee; review with `niko scrub --review`.
  */
 
 const SECRET_HEADERS = /^(cookie|authorization|proxy-authorization|x-csrf.*|x-xsrf.*|x-api-key|x-auth.*)$/i;

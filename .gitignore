@@ -1,7 +1,7 @@
 node_modules/
 dist/
 *.tsbuildinfo
-.sandbox/
+.niko/
 .env
 .env.*
 !.env.example

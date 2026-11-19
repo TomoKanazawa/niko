@@ -3,7 +3,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitepress";
 
-const REPO = "https://github.com/TomoKanazawa/thousand-sandbox";
+const REPO = "https://github.com/TomoKanazawa/niko";
 const docs = join(dirname(fileURLToPath(import.meta.url)), "..");
 
 // AGENTS.md lives at the repository root, where coding agents look for it. The site shows the same text:
@@ -15,7 +15,7 @@ writeFileSync(
 copyFileSync(join(docs, "..", "LICENSE"), join(docs, "public", "LICENSE.txt"));
 
 export default defineConfig({
-  title: "Thousand Sandbox",
+  title: "Niko",
   description: "An exact working copy of any web app, as a sandbox for testing AI agents.",
   lang: "en",
   cleanUrls: true,
@@ -77,7 +77,7 @@ export default defineConfig({
   },
   themeConfig: {
     logo: "/logo.svg",
-    siteTitle: "Thousand Sandbox",
+    siteTitle: "Niko",
     nav: [
       { text: "Tutorial", link: "/tutorial" },
       { text: "Guide", link: "/guide" },
@@ -115,8 +115,8 @@ export default defineConfig({
       // This function is sent to the browser as text, so it cannot use the constants above.
       pattern: ({ filePath }) =>
         filePath === "agents.md"
-          ? "https://github.com/TomoKanazawa/thousand-sandbox/edit/main/AGENTS.md"
-          : `https://github.com/TomoKanazawa/thousand-sandbox/edit/main/docs/${filePath}`,
+          ? "https://github.com/TomoKanazawa/niko/edit/main/AGENTS.md"
+          : `https://github.com/TomoKanazawa/niko/edit/main/docs/${filePath}`,
       text: "Edit this page on GitHub",
     },
     footer: {

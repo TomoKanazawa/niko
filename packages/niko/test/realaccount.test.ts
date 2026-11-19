@@ -22,7 +22,7 @@ interface News {
   close(): Promise<void>;
 }
 
-/** What `sandbox init --real-account` does: a new app, then the person logs in in the tool's own window. */
+/** What `niko init --real-account` does: a new app, then the person logs in in the tool's own window. */
 async function setUp(news: News) {
   const cwd = mkdtempSync(join(tmpdir(), "sbx-news-"));
   const { paths, config } = initApp(`${news.url}/news`, { cwd, app: "tiny-news", realAccount: true });

@@ -88,7 +88,7 @@ describe("record, analyze and replay tiny-clinic", () => {
 
     const res = await page.goto(`${clinic.url}/patients/999`);
     expect(res?.status()).toBe(501);
-    expect(res?.headers()["x-sandbox"]).toBe("uncaptured");
+    expect(res?.headers()["x-niko"]).toBe("uncaptured");
     const log = (await (await fetch(`${sandbox.controlUrl}/log`)).json()) as { served: string }[];
     expect(log.some((l) => l.served === "replay")).toBe(true);
     expect(log.some((l) => l.served === "static")).toBe(true);

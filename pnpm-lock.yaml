@@ -30,7 +30,7 @@ importers:
         specifier: ^8.18.0
         version: 8.22.2
 
-  packages/sandbox:
+  packages/niko:
     dependencies:
       '@anthropic-ai/claude-agent-sdk':
         specifier: '>=0.3.0'

@@ -23,7 +23,7 @@ if (existsSync(".env")) {
   try {
     process.loadEnvFile(".env");
   } catch {
-    // An unreadable .env is ignored; `sandbox doctor` reports a missing key.
+    // An unreadable .env is ignored; `niko doctor` reports a missing key.
   }
 }
 const out = (s: string) => process.stdout.write(`${s}\n`);
@@ -36,11 +36,10 @@ function ctx(opts: { app?: string }) {
 
 const program = new Command();
 program
-  .name("sandbox")
+  .name("niko")
   .description("An exact working copy of any web app, as a sandbox for testing AI agents.")
   .version(TOOL_VERSION);
-const withApp = (c: Command) =>
-  c.option("--app <name>", "which app under .sandbox/ (needed only when there are several)");
+const withApp = (c: Command) => c.option("--app <name>", "which app under .niko/ (needed only when there are several)");
 
 withApp(program.command("init <url>").description("Set up a new app and open Chrome so you can log in once"))
   .option("--origin <origin...>", "extra origins the copy should answer for (default: the URL's origin)")
@@ -62,7 +61,7 @@ withApp(program.command("init <url>").description("Set up a new app and open Chr
         "Real-account mode: nothing that changes the account (posting, voting, saving, deleting, logging out) is ever sent, whoever clicks it.",
       );
     if (o.login) await openForLogin(paths, config.startUrl, !!config.realAccount);
-    out("Next: sandbox capture");
+    out("Next: niko capture");
   });
 
 withApp(program.command("login").description("Open Chrome with the saved profile to log in again")).action(
@@ -85,7 +84,7 @@ async function openForLogin(paths: ReturnType<typeof appPaths>, url: string, rea
   );
   if (realAccount)
     out(
-      "This window is not gated: only log in here. The saved profile is a live login to your account: anyone who can read this folder can use it. Delete it with `sandbox forget` when you are done.",
+      "This window is not gated: only log in here. The saved profile is a live login to your account: anyone who can read this folder can use it. Delete it with `niko forget` when you are done.",
     );
   const context = await launchBrowser(paths, {});
   const page = context.pages()[0] ?? (await context.newPage());
@@ -138,7 +137,7 @@ withApp(program.command("capture").description("Record the live app"))
     });
     const a = analyze(paths, config);
     out(`Capture ${id} saved. ${a.coverage.exchanges} exchanges in ${a.coverage.clusters} endpoints so far.`);
-    out("Next: sandbox up (replay as recorded), or sandbox build (make it stateful).");
+    out("Next: niko up (replay as recorded), or niko build (make it stateful).");
   });
 
 withApp(program.command("policy").description("Show or change which endpoints are reads and which are writes"))
@@ -214,7 +213,7 @@ withApp(program.command("build").description("Generate the stateful copy with a 
       const m = readJson<Manifest>(join(paths.captures, id, "manifest.json"));
       if (m.phi && !m.reviewed)
         throw new Error(
-          `Capture ${id} holds personal data and has not been reviewed. Run: sandbox scrub --review, then sandbox scrub --confirm`,
+          `Capture ${id} holds personal data and has not been reviewed. Run: niko scrub --review, then niko scrub --confirm`,
         );
     }
     analyze(paths, config);
@@ -314,7 +313,7 @@ withApp(program.command("up").description("Run the copy; any browser agent can u
 
 const running = (paths: ReturnType<typeof appPaths>) => {
   const file = join(paths.run, "up.json");
-  if (!existsSync(file)) throw new Error("The copy is not running. Start it with: sandbox up");
+  if (!existsSync(file)) throw new Error("The copy is not running. Start it with: niko up");
   return readJson<{ pid: number; controlPort: number }>(file);
 };
 
@@ -370,7 +369,7 @@ withApp(program.command("schedule <when>").description("Run the drift check ever
     const { app } = ctx(o);
     const s = scheduleDaily(process.cwd(), app, CLI, o.hour);
     out(`Wrote ${s.file}\nTurn it on with:\n  ${s.enable}`);
-    out("The check uses the saved login. When the app's session expires it stops and asks you to run `sandbox login`.");
+    out("The check uses the saved login. When the app's session expires it stops and asks you to run `niko login`.");
   });
 
 program
@@ -388,11 +387,11 @@ program
     ok(chrome, "Google Chrome", "install Chrome, or run: npx playwright install chromium");
     ok(
       !!process.env.ANTHROPIC_API_KEY || !!process.env.CLAUDE_CODE_USE_BEDROCK || !!process.env.CLAUDE_CODE_USE_VERTEX,
-      "ANTHROPIC_API_KEY (needed for `sandbox build` only)",
+      "ANTHROPIC_API_KEY (needed for `niko build` only)",
       "export ANTHROPIC_API_KEY=...",
     );
     const sdk = await import("@anthropic-ai/claude-agent-sdk" as string).then(() => true).catch(() => false);
-    ok(sdk, "Claude Agent SDK (needed for `sandbox build` only)", "npm install @anthropic-ai/claude-agent-sdk");
+    ok(sdk, "Claude Agent SDK (needed for `niko build` only)", "npm install @anthropic-ai/claude-agent-sdk");
     ok(
       totalmem() >= 6 * 2 ** 30,
       `Memory ${(totalmem() / 2 ** 30).toFixed(0)} GB`,
@@ -417,7 +416,7 @@ function has(bin: string) {
 
 program.parseAsync().catch((e: Error & { code?: string }) => {
   if (e.code === "EADDRINUSE")
-    e.message = `${e.message}\n  A copy may already be running: stop it with \`sandbox down\`, or choose other ports with --port, --control-port and --cdp-port.`;
-  process.stderr.write(`sandbox: ${e.message}\n`);
+    e.message = `${e.message}\n  A copy may already be running: stop it with \`niko down\`, or choose other ports with --port, --control-port and --cdp-port.`;
+  process.stderr.write(`niko: ${e.message}\n`);
   process.exit(1);
 });

@@ -1,4 +1,4 @@
-# Guide: using Thousand Sandbox on your own app
+# Guide: using Niko on your own app
 
 Read [TUTORIAL.md](TUTORIAL.md) first if you have not run the tool yet. It takes 15 minutes on a bundled test
 app and shows every part working. This guide is the reference for doing the same on a real app.
@@ -33,11 +33,11 @@ There are two kinds of copy:
 
 | | Replay copy | Stateful copy |
 |---|---|---|
-| Made by | `sandbox capture` | `sandbox build` |
+| Made by | `niko capture` | `niko build` |
 | Needs a model | No | Yes, with your Anthropic API key |
 | Reads | Exactly the pages and records that were recorded | Any record, from a database |
 | Writes | Answered as they were recorded; nothing changes | Change the database; later reads show it |
-| Something never recorded | Status `501`, header `X-Sandbox: uncaptured` | The same |
+| Something never recorded | Status `501`, header `X-Niko: uncaptured` | The same |
 | Cost | Free | Model usage, capped by `--max-usd` |
 
 The copy never makes an answer up. If it has nothing recorded for a request, it says so.
@@ -48,7 +48,7 @@ The copy never makes an answer up. If it has nothing recorded for a request, it 
   data onto your machine. Check the app's terms and your agreement with whoever owns the data.
 - **Use a test account or a test record if you can.** A person's recording session does whatever that person
   does, including real changes.
-- **Everything stays on your machine.** The tool sends nothing anywhere, with one exception: `sandbox build`
+- **Everything stays on your machine.** The tool sends nothing anywhere, with one exception: `niko build`
   sends recorded pages and responses (with secrets removed) to Anthropic, using your API key.
 - **The tool does not get around bot detection, CAPTCHAs or multi-factor login.** A person logs in; the tool
   reuses that session.
@@ -59,36 +59,36 @@ Requirements: Node 22.13 or newer, pnpm 9 or newer, Google Chrome. Tested on mac
 is untested. It is not on npm yet, so install from the repository:
 
 ```bash
-git clone https://github.com/TomoKanazawa/thousand-sandbox.git
-cd thousand-sandbox
+git clone https://github.com/TomoKanazawa/niko.git
+cd niko
 pnpm install
 pnpm build
 ```
 
-The command is `bin/sandbox` in the clone. Call it by its full path from the folder where you want the tool to
+The command is `bin/niko` in the clone. Call it by its full path from the folder where you want the tool to
 keep its files, or add an alias:
 
 ```bash
-alias sandbox=/absolute/path/to/thousand-sandbox/bin/sandbox
-sandbox doctor
+alias niko=/absolute/path/to/niko/bin/niko
+niko doctor
 ```
 
-`sandbox doctor` checks Node, Chrome, the API key, memory and disk. The API key and the Claude Agent SDK are
-needed only for `sandbox build`.
+`niko doctor` checks Node, Chrome, the API key, memory and disk. The API key and the Claude Agent SDK are
+needed only for `niko build`.
 
-The rest of this guide writes `sandbox` for that command.
+The rest of this guide writes `niko` for that command.
 
 ## 4. Set up an app
 
 Run this from your project folder (or any folder you choose):
 
 ```bash
-sandbox init https://app.example.com
+niko init https://app.example.com
 ```
 
 It does three things:
 
-1. Creates `.sandbox/<app>/` in the current folder, and adds `.sandbox/` to that folder's `.gitignore` (creating
+1. Creates `.niko/<app>/` in the current folder, and adds `.niko/` to that folder's `.gitignore` (creating
    the file if there is none).
    `<app>` is made from the address, for example `app.example.com`.
 2. Opens a Chrome window with a profile used only by this tool.
@@ -110,10 +110,10 @@ not in scope fails with status `502`.
 Add the others when you set up:
 
 ```bash
-sandbox init https://app.example.com --origin https://api.example.com https://cdn.example.com
+niko init https://app.example.com --origin https://api.example.com https://cdn.example.com
 ```
 
-or later, by editing `origins:` in `.sandbox/<app>/sandbox.config.yaml` and running `sandbox analyze`. An origin
+or later, by editing `origins:` in `.niko/<app>/niko.config.yaml` and running `niko analyze`. An origin
 is the scheme, host and port: `https://api.example.com`, with no path.
 
 To find out which ones you need, run the copy (section 6), use the app, and look for entries marked `external`
@@ -121,7 +121,7 @@ in the request log.
 
 ### Several apps
 
-Each app gets its own folder under `.sandbox/`. When there is more than one, add `--app <name>` to every
+Each app gets its own folder under `.niko/`. When there is more than one, add `--app <name>` to every
 command.
 
 ## 5. Record the app
@@ -132,7 +132,7 @@ There are three ways to record.
 ### A person uses the app
 
 ```bash
-sandbox capture
+niko capture
 ```
 
 A Chrome window opens, already logged in. Use the app the way your agent will have to: open the screens, run
@@ -149,7 +149,7 @@ What to cover, in order of value:
 ### A script uses the app
 
 ```bash
-sandbox capture --script my-session.mjs --headless
+niko capture --script my-session.mjs --headless
 ```
 
 The file is an ES module whose default export receives a [Playwright](https://playwright.dev) page that is
@@ -177,13 +177,13 @@ saved.
 ### The tool explores by itself
 
 ```bash
-sandbox capture --explore --headless --max-actions 100
+niko capture --explore --headless --max-actions 100
 ```
 
 The tool clicks through the app with no model, using the saved login. It is built to be safe on a real system:
 
 - It does not press controls that look like they commit something (save, submit, delete, send, sign, pay).
-- Requests other than plain reads are blocked before they leave the browser, unless `sandbox policy` marks
+- Requests other than plain reads are blocked before they leave the browser, unless `niko policy` marks
   them as reads. Unknown requests are blocked.
 
 So exploring widens the coverage of screens and reads, and records no writes. It does not fill in forms. Run a
@@ -196,9 +196,9 @@ person's or a script's session first, so the login is valid and the policy has s
 If the login may be someone's real account, set the app up so that nothing can change it:
 
 ```bash
-sandbox init https://news.example.com --real-account
-sandbox capture --explore --headless
-sandbox forget
+niko init https://news.example.com --real-account
+niko capture --explore --headless
+niko forget
 ```
 
 In real-account mode:
@@ -211,18 +211,18 @@ In real-account mode:
 - **Image pings and beacons with a query string are blocked,** and so is anything the site's robots.txt
   disallows. Sites often list their own action links there.
 - **You are told when something is stopped.** If a person or a script clicks something that is stopped, the
-  page stays where it was and shows "Blocked by Thousand Sandbox ... Nothing was sent".
+  page stays where it was and shows "Blocked by Niko ... Nothing was sent".
 - **Requests are paced:** one page or data request every `Crawl-delay` seconds from the site's robots.txt,
   or every 2 seconds. Change it with `--delay <seconds>`.
 - **The crawl stops when the site says to slow down:** an HTTP 429 or 503, or a short page saying so. What
   was recorded is kept.
 
-Stopped requests are still kept, so `sandbox build` can make them work in the copy. They have no recorded
+Stopped requests are still kept, so `niko build` can make them work in the copy. They have no recorded
 answer, so the builder infers one from the request and the pages around it, and the report labels them
 `inferred`.
 
 The login window that `init` and `login` open is not gated: only log in there. The saved profile is a live
-login: delete it with `sandbox forget`, or add `--forget-after` to the capture.
+login: delete it with `niko forget`, or add `--forget-after` to the capture.
 
 Each crawl writes `coverage.json` next to the capture. It lists every kind of link seen (path plus parameter
 names) and whether it was opened, refused (and why) or not reached.
@@ -234,11 +234,11 @@ the note you added yesterday is still there today. If you record on a test syste
 its starting state since the last capture (it was restarted, restored or re-seeded), say so:
 
 ```bash
-sandbox capture --after-reset
+niko capture --after-reset
 ```
 
 It works with every way of recording. The check in section 8 then starts that capture from the copy's starting
-data instead of carrying on. Without it, `sandbox verify` reports failures such as a new record getting a
+data instead of carrying on. Without it, `niko verify` reports failures such as a new record getting a
 different id than the one recorded.
 
 ### Reads that look like writes
@@ -247,16 +247,16 @@ Some apps send a search or a filter as a `POST`. The tool blocks those while exp
 them from a change. List its decisions and correct them:
 
 ```bash
-sandbox policy
-sandbox policy --set "POST app.example.com /api/search=read"
+niko policy
+niko policy --set "POST app.example.com /api/search=read"
 ```
 
-The key is the method, the host and the path pattern exactly as `sandbox policy` prints them. Decisions are
+The key is the method, the host and the path pattern exactly as `niko policy` prints them. Decisions are
 `read`, `write` or `unknown`. A decision you set is never overwritten.
 
 ### After every capture
 
-The tool removes secrets from the capture (section 10) and regroups all captures into endpoints. `sandbox
+The tool removes secrets from the capture (section 10) and regroups all captures into endpoints. `niko
 analyze` prints the summary again at any time:
 
 ```
@@ -266,7 +266,7 @@ Named in the app's code but never seen (3): /notes, /sign, /ws
 ```
 
 An **exchange** is one request with its response. An **endpoint** is a group of requests of the same kind, such
-as every `GET /orders/{id}`; each has an id like `c_0007`, shown in `sandbox report`. (The files call an endpoint
+as every `GET /orders/{id}`; each has an id like `c_0007`, shown in `niko report`. (The files call an endpoint
 a cluster.)
 
 | Kind | Meaning | In the copy |
@@ -283,7 +283,7 @@ is a hint about what you have not recorded yet.
 ## 6. Run the copy and attach an agent
 
 ```bash
-sandbox up
+niko up
 ```
 
 ```
@@ -302,11 +302,11 @@ The command keeps running, and takes a few seconds to be ready. A script should 
   the copy. Nothing reaches the real app. Other browsers on your machine are not affected.
 - **A control address** on port 8878.
 
-Stop it with Ctrl-C, or from another terminal with `sandbox down`. Only one copy runs at a time.
+Stop it with Ctrl-C, or from another terminal with `niko down`. Only one copy runs at a time.
 
 ### Attach your agent
 
-Your agent must drive the Chrome that `sandbox up` started; that is the only browser that sees the copy. Most
+Your agent must drive the Chrome that `niko up` started; that is the only browser that sees the copy. Most
 browser automation tools can attach to a running Chrome when given its DevTools address. The agent then uses
 the app's real addresses and needs no other change.
 
@@ -335,7 +335,7 @@ that is what the app's start address showed when it was recorded; go straight to
 
 ### Use your own browser
 
-`sandbox up --no-chrome` starts the copy without Chrome and prints the flags a Chromium-based browser needs:
+`niko up --no-chrome` starts the copy without Chrome and prints the flags a Chromium-based browser needs:
 
 ```
 Start Chrome with:    --proxy-server=127.0.0.1:8877 --proxy-bypass-list=<-loopback> --ignore-certificate-errors-spki-list=... --user-data-dir=<empty dir>
@@ -349,9 +349,9 @@ browser accept the copy's certificate for HTTPS addresses; nothing is installed 
 | Request | What it does |
 |---|---|
 | `GET /health` | `{ "ok": true, "app": ..., "endpoints": ... }`. `ok` is `false` while the copy is still starting |
-| `POST /reset` | Puts the copy's data back to the start. Same as `sandbox reset`. The request log is kept |
+| `POST /reset` | Puts the copy's data back to the start. Same as `niko reset`. The request log is kept |
 | `GET /state` | The copy's database as JSON, one key per table. Use it in test assertions |
-| `GET /log` | Every request the app's pages and your agent made, in order, since `sandbox up`. The first few are the copy's Chrome opening the start page |
+| `GET /log` | Every request the app's pages and your agent made, in order, since `niko up`. The first few are the copy's Chrome opening the start page |
 | `GET /ledger` | The trust labels (section 8) |
 
 Each `/log` entry has a number `n`, a time `at`, `method`, `url`, `status`, the endpoint id `cluster` when the
@@ -387,7 +387,7 @@ A replay copy cannot show the result of a write. A stateful copy can: it has a S
 file per endpoint.
 
 ```bash
-sandbox build --max-usd 20
+niko build --max-usd 20
 ```
 
 A coding agent (Claude, through the Claude Agent SDK) reads the recordings and writes the database schema, the
@@ -418,19 +418,19 @@ Endpoints: 8 verified, 6 replayed-only, 0 inferred, 0 uncaptured, 1 external
   the config file (40 by default). The amount printed at the end is an estimate, not your bill.
 - `--yes` skips the question. The question is also skipped when the command is not run from a terminal.
 - `--resume` continues a build that was interrupted or ran out of money, without repeating finished steps.
-- `--cluster c_0003,c_0007` builds only those endpoints. The ids are in `sandbox report`.
+- `--cluster c_0003,c_0007` builds only those endpoints. The ids are in `niko report`.
 
 The only measured build so far is the test app: 11 endpoints, about $1.10 and three minutes. A large app will
 cost more and may not finish cleanly; start with a low `--max-usd`.
 
 ### Fix the copy by hand
 
-Everything the build writes is a plain file under `.sandbox/<app>/replica/`: `schema.sql`, `seed.sql`, one
+Everything the build writes is a plain file under `.niko/<app>/replica/`: `schema.sql`, `seed.sql`, one
 TypeScript file per endpoint in `routes/`, shared pieces in `templates/`. When a handler is wrong for your app,
 edit it and check it:
 
 ```bash
-sandbox verify
+niko verify
 ```
 
 The rules a handler follows are in [CONTRACT.md](CONTRACT.md). A complete hand-written example is in
@@ -439,7 +439,7 @@ The rules a handler follows are in [CONTRACT.md](CONTRACT.md). A complete hand-w
 ## 8. Know what to trust
 
 ```bash
-sandbox verify
+niko verify
 ```
 
 ```
@@ -477,53 +477,53 @@ and each endpoint gets one label:
 | uncaptured | Never recorded | Nothing; it answers `501` |
 | external | Analytics and the like | Nothing; it is ignored |
 
-`sandbox report` prints the full table: every endpoint with its label and check counts, and every recorded
+`niko report` prints the full table: every endpoint with its label and check counts, and every recorded
 action (each click and form submit) with the label of the weakest endpoint it depends on. The same data is in
-`.sandbox/<app>/replica/ledger.json` and at `GET /ledger`.
+`.niko/<app>/replica/ledger.json` and at `GET /ledger`.
 
 To raise a label from replayed-only to verified, record more: another record of the same kind, or a read after
-the write. Then run `sandbox build --resume`.
+the write. Then run `niko build --resume`.
 
 ## 9. Keep up with the real app
 
 Real apps change. The drift check tells you when the copy has fallen behind.
 
 ```bash
-sandbox drift
+niko drift
 ```
 
 It opens the real app with the saved login, visits the recorded screens, repeats the recorded reads, and
 compares the structure with the recordings: fields in API responses, form fields, and buttons and links on each
-screen. It only reads. It prints a report and saves it to `.sandbox/<app>/drift/drift-report.md`.
+screen. It only reads. It prints a report and saves it to `.niko/<app>/drift/drift-report.md`.
 
 | Exit code | Meaning |
 |---|---|
 | 0 | No drift |
 | 1 | Behavioural or cosmetic changes only (something was added, or page markup changed) |
 | 2 | Breaking changes (something your agent may rely on was removed or renamed) |
-| 3 | The login has expired. Run `sandbox login`, then try again |
+| 3 | The login has expired. Run `niko login`, then try again |
 
 Changes in data alone (a new patient, a different total) are not drift.
 
-- `sandbox drift --update` takes the new recording into the copy. If the copy is stateful, it rebuilds the
+- `niko drift --update` takes the new recording into the copy. If the copy is stateful, it rebuilds the
   affected endpoints with the model; cap that with `--max-usd`.
-- `sandbox schedule daily --hour 6` writes a scheduled job that runs the check every morning and prints the
+- `niko schedule daily --hour 6` writes a scheduled job that runs the check every morning and prints the
   command that turns it on (a launchd file on macOS, a cron line on Linux).
-- `sandbox login` opens the browser so a person can log in again.
+- `niko login` opens the browser so a person can log in again.
 
 ## 10. Secrets and personal data
 
 **Secrets.** Before anything else reads a capture, session cookies, tokens, CSRF values and typed passwords are
 replaced with placeholders such as `SBX_SESSION_1`. The analysis, the builder and the copy only ever see that
-version. The untouched recording stays in `.sandbox/<app>/captures/<id>/` on your machine, with the Chrome
+version. The untouched recording stays in `.niko/<app>/captures/<id>/` on your machine, with the Chrome
 profile and the saved cookies. Treat that folder like a password and never commit it.
 
 **Personal data.** By default the tool removes secrets only. If the app shows real people's data:
 
 ```bash
-sandbox scrub --pii       # replace personal data with consistent fake values
-sandbox scrub --review    # show what was replaced and what still looks personal
-sandbox scrub --confirm   # say you have reviewed it; needed before `sandbox build` will run
+niko scrub --pii       # replace personal data with consistent fake values
+niko scrub --review    # show what was replaced and what still looks personal
+niko scrub --confirm   # say you have reviewed it; needed before `niko build` will run
 ```
 
 Replacement works on labelled fields (a JSON key or form field called `name`, `dob`, `phone`, and so on) and on
@@ -531,42 +531,42 @@ patterns (emails, phone numbers, dates). **A name that appears only inside free 
 lists text that still looks like a name or a date so you can check. This is help, not a guarantee: decide for
 yourself whether the result may be sent to a model.
 
-`sandbox scrub --off` goes back to secrets only, for apps whose data is fictional.
+`niko scrub --off` goes back to secrets only, for apps whose data is fictional.
 
 ## 11. Command reference
 
-Every command accepts `--app <name>`, needed only when `.sandbox/` holds more than one app.
+Every command accepts `--app <name>`, needed only when `.niko/` holds more than one app.
 
 | Command | What it does | Needs |
 |---|---|---|
-| `sandbox doctor` | Checks the machine | |
-| `sandbox init <url>` | Creates `.sandbox/<app>/` and opens Chrome for a login. `--no-login`, `--origin <origin...>`, `--real-account` | A person, unless `--no-login` |
-| `sandbox login` | Opens Chrome with the saved profile to log in again | A person |
-| `sandbox forget` | Deletes the saved login (the tool's Chrome profile and session cookies) | |
-| `sandbox capture` | Records a person's session until the window is closed. `--screenshots`, `--label <text>`, `--after-reset`, `--delay <s>`, `--forget-after` | A person |
-| `sandbox capture --script <file>` | Records a scripted session. `--headless` | |
-| `sandbox capture --explore` | Records an automatic read-only crawl. `--max-actions <n>` (default 300), `--headless`, `--allow-writes` | A valid login |
-| `sandbox policy` | Lists read/write decisions. `--set "<key>=<read\|write\|unknown>"` | |
-| `sandbox scrub` | Re-runs secret removal. `--pii`, `--off`, `--review`, `--confirm` | |
-| `sandbox analyze` | Regroups all captures into endpoints and prints the summary | |
-| `sandbox build` | Has a model write the stateful copy, then checks it. `--max-usd <x>`, `--yes`, `--resume`, `--cluster <ids>` | API key |
-| `sandbox verify` | Checks the copy against the recordings. `--json`, `--cluster <ids>`, `--no-write`. Exit 1 on failure | |
-| `sandbox report` | Prints the labels per endpoint and per action as Markdown; also saved as `replica/report.md` | |
-| `sandbox up` | Runs the copy and a Chrome attached to it. `--headless`, `--no-chrome`, `--replay-only`, `--today`, `--port`, `--control-port`, `--cdp-port` | |
-| `sandbox reset` | Puts the running copy's data back to the start | A running copy |
-| `sandbox down` | Stops the running copy | A running copy |
-| `sandbox drift` | Compares the real app with the recordings. `--headless`, `--update`, `--max-usd <x>`. Exit 0, 1, 2 or 3 | A valid login |
-| `sandbox schedule daily` | Writes a daily drift job. `--hour <h>` | |
+| `niko doctor` | Checks the machine | |
+| `niko init <url>` | Creates `.niko/<app>/` and opens Chrome for a login. `--no-login`, `--origin <origin...>`, `--real-account` | A person, unless `--no-login` |
+| `niko login` | Opens Chrome with the saved profile to log in again | A person |
+| `niko forget` | Deletes the saved login (the tool's Chrome profile and session cookies) | |
+| `niko capture` | Records a person's session until the window is closed. `--screenshots`, `--label <text>`, `--after-reset`, `--delay <s>`, `--forget-after` | A person |
+| `niko capture --script <file>` | Records a scripted session. `--headless` | |
+| `niko capture --explore` | Records an automatic read-only crawl. `--max-actions <n>` (default 300), `--headless`, `--allow-writes` | A valid login |
+| `niko policy` | Lists read/write decisions. `--set "<key>=<read\|write\|unknown>"` | |
+| `niko scrub` | Re-runs secret removal. `--pii`, `--off`, `--review`, `--confirm` | |
+| `niko analyze` | Regroups all captures into endpoints and prints the summary | |
+| `niko build` | Has a model write the stateful copy, then checks it. `--max-usd <x>`, `--yes`, `--resume`, `--cluster <ids>` | API key |
+| `niko verify` | Checks the copy against the recordings. `--json`, `--cluster <ids>`, `--no-write`. Exit 1 on failure | |
+| `niko report` | Prints the labels per endpoint and per action as Markdown; also saved as `replica/report.md` | |
+| `niko up` | Runs the copy and a Chrome attached to it. `--headless`, `--no-chrome`, `--replay-only`, `--today`, `--port`, `--control-port`, `--cdp-port` | |
+| `niko reset` | Puts the running copy's data back to the start | A running copy |
+| `niko down` | Stops the running copy | A running copy |
+| `niko drift` | Compares the real app with the recordings. `--headless`, `--update`, `--max-usd <x>`. Exit 0, 1, 2 or 3 | A valid login |
+| `niko schedule daily` | Writes a daily drift job. `--hour <h>` | |
 
-Errors are printed as `sandbox: <message>` and the command exits with code 1.
+Errors are printed as `niko: <message>` and the command exits with code 1.
 
 ## 12. Files
 
-Everything for an app is under `.sandbox/<app>/`. The parts you may want to read or edit:
+Everything for an app is under `.niko/<app>/`. The parts you may want to read or edit:
 
 | Path | What it is |
 |---|---|
-| `sandbox.config.yaml` | Start address, origins in scope, scrub mode, model names, budgets |
+| `niko.config.yaml` | Start address, origins in scope, scrub mode, model names, budgets |
 | `policy.yaml` | Read or write decision per request kind |
 | `captures/<id>/` | One recording: events, bodies, page snapshots, a HAR file, and the scrubbed version |
 | `analysis/` | Endpoints, what changes by itself, the held-back set, an OpenAPI file for the JSON endpoints |
@@ -576,32 +576,32 @@ Everything for an app is under `.sandbox/<app>/`. The parts you may want to read
 
 The complete list with formats is in [FORMATS.md](FORMATS.md).
 
-To start an app again from nothing, delete `.sandbox/<app>/`. To remove one recording, delete its folder under
-`captures/` and run `sandbox analyze`.
+To start an app again from nothing, delete `.niko/<app>/`. To remove one recording, delete its folder under
+`captures/` and run `niko analyze`.
 
 ## 13. Troubleshooting
 
 | What you see | Why | What to do |
 |---|---|---|
-| A page in the copy is blank or half-loaded | A script or data file comes from an address that is not in scope | Look for `external` entries in `GET /log`, add those origins (section 4), run `sandbox analyze`, restart the copy |
-| `501` with `X-Sandbox: uncaptured` | That request was never recorded with those parameters | Record a session that makes it, then restart the copy |
+| A page in the copy is blank or half-loaded | A script or data file comes from an address that is not in scope | Look for `external` entries in `GET /log`, add those origins (section 4), run `niko analyze`, restart the copy |
+| `501` with `X-Niko: uncaptured` | That request was never recorded with those parameters | Record a session that makes it, then restart the copy |
 | The copy shows a record but not the one your agent asked for | Replay copies only know recorded records | Record that record, or build the stateful copy |
 | A write "works" but nothing changes | It is a replay copy, or that endpoint is replayed-only | Build the stateful copy; record a read after the write |
-| `The app's session has expired` | The app logged the tool out | `sandbox login`, or re-run a `--script` capture that logs in |
+| `The app's session has expired` | The app logged the tool out | `niko login`, or re-run a `--script` capture that logs in |
 | `capture --explore` reports `Explored 1 states with 0 actions` | It landed on the login page | The same: log in again |
-| `Capture <id> has not been scrubbed` | A capture folder is incomplete | `sandbox scrub`; if it persists, delete that folder under `captures/` |
-| `Capture <id> holds personal data and has not been reviewed` | `scrub --pii` was used | `sandbox scrub --review`, then `sandbox scrub --confirm` |
-| `ANTHROPIC_API_KEY is not set` | `sandbox build` has no key | Put it in `.env` in the folder you run from, or export it |
-| `The copy is not running` | `reset` or `down` without `up` | `sandbox up` |
-| `listen EADDRINUSE: address already in use` from `sandbox up` | A copy is already running, or the port is taken | `sandbox down`, or choose other ports |
-| Chrome does not open | Chrome is not installed where the tool looks | Install Chrome, or `pnpm --filter thousand-sandbox exec playwright install chromium` |
+| `Capture <id> has not been scrubbed` | A capture folder is incomplete | `niko scrub`; if it persists, delete that folder under `captures/` |
+| `Capture <id> holds personal data and has not been reviewed` | `scrub --pii` was used | `niko scrub --review`, then `niko scrub --confirm` |
+| `ANTHROPIC_API_KEY is not set` | `niko build` has no key | Put it in `.env` in the folder you run from, or export it |
+| `The copy is not running` | `reset` or `down` without `up` | `niko up` |
+| `listen EADDRINUSE: address already in use` from `niko up` | A copy is already running, or the port is taken | `niko down`, or choose other ports |
+| Chrome does not open | Chrome is not installed where the tool looks | Install Chrome, or `pnpm --filter useniko exec playwright install chromium` |
 | Live updates do not arrive in the copy | WebSockets are recorded but not replayed | Nothing yet; see Limits |
 | `verify` fails with different ids or stale values, on a test system | The system's data was reset between captures | Record with `--after-reset` (section 5). To fix an existing capture, delete its folder under `captures/` and record again |
 | `verify` reports failures after you edited a handler | The handler's answer differs from the recording | Read the printed difference; it shows the first place they diverge |
-| `sandbox verify` prints `0/0 checks pass` | There is no stateful copy yet | Normal for a replay copy |
+| `niko verify` prints `0/0 checks pass` | There is no stateful copy yet | Normal for a replay copy |
 
 When something else goes wrong, the most useful things to send with a report are the command, its full output,
-`sandbox report`, and the `uncaptured` and `external` lines from `GET /log`. Do not send the `captures/` folder: it
+`niko report`, and the `uncaptured` and `external` lines from `GET /log`. Do not send the `captures/` folder: it
 holds the unscrubbed recording.
 
 ## 14. Limits

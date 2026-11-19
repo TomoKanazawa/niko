@@ -216,7 +216,7 @@ function compare(
 
 /** Ledger and coverage as Markdown. */
 export function reportMarkdown(ledger: Ledger, coverage?: Record<string, number>): string {
-  const lines = ["# Sandbox report", "", `Built ${ledger.builtAt}. Replica ${ledger.replicaHash}.`, ""];
+  const lines = ["# Niko report", "", `Built ${ledger.builtAt}. Replica ${ledger.replicaHash}.`, ""];
   if (coverage)
     lines.push(
       `Recorded ${coverage.exchanges} exchanges in ${coverage.clusters} endpoints; ${coverage.unobservedInCode ?? 0} endpoints appear in the app's code but were never seen.`,

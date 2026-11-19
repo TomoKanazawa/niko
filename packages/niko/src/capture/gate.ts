@@ -2,7 +2,7 @@ import type { Policy, PolicyEntry } from "../types.js";
 /**
  * The two write gates used during exploration.
  * UI gate: judge a control before clicking it. Network gate: judge a request before it leaves the browser.
- * The word lists come from the Thousand practice agent's click-safety rule.
+ * The word lists come from an earlier click-safety rule for a browser agent.
  */
 import { parseBody } from "../util.js";
 
