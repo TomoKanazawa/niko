@@ -49,7 +49,7 @@ Version 0.1.0. 38 automated tests pass on the test apps `fixtures/tiny-clinic` a
 | Triage agent | Failures go to the repair step as deterministic descriptions |
 | Container isolation of the builder | Tool and path restrictions plus a hash check. Not a hard guarantee |
 | L4 live comparison and the parity benchmark | Not started |
-| WebSocket and server-sent-event replay | Recorded; the copy rejects WebSocket connections |
+| WebSocket and server-sent-event replay | Recorded; the copy rejects WebSocket connections. An open stream (`EventSource`, `text/event-stream`, a body still arriving two seconds after its headers) is ignored while the recorder waits for a page to settle, so a live-update feed no longer adds the 10-second cap to every crawl step |
 | Several copies at once, date shifting for `--today` | One copy; `--today` only switches to the real clock |
 | Dockerfile, compose file, GitHub Action, Windows scheduling, pixel diff | Not started |
 | Telemetry | None. The tool sends nothing |

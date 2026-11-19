@@ -7,6 +7,8 @@ import { LISTENER_SCRIPT } from "./pagescript.js";
 
 const SETTLE_QUIET_MS = 500;
 const SETTLE_CAP_MS = 10_000;
+/** A response whose headers arrived this long ago with the body still coming is a stream, not a pending request. */
+const STREAM_AFTER_MS = 2_000;
 
 /**
  * Records one episode: every HTTP exchange with bodies, WebSocket frames, user actions and page snapshots.
@@ -17,10 +19,16 @@ export class Recorder {
   private file: string;
   private t0 = Date.now();
   private seq = 0;
-  private inflight = 0;
   private lastActivity = Date.now();
   private pending = new Set<Promise<unknown>>();
-  private starts = new Map<Request, { id: string; ts: number; causedBy: string | null }>();
+  /**
+   * Requests that have started and not finished. `headersAt` is set once the response headers arrive; `stream` once
+   * the request is known never to finish on its own (an EventSource, a `text/event-stream` body).
+   */
+  private starts = new Map<
+    Request,
+    { id: string; ts: number; causedBy: string | null; headersAt?: number; stream?: boolean }
+  >();
   private bodyOf = new Map<Request, Promise<Buffer | null>>();
   /** Requests the network gate stopped: recorded once by `blocked()`, not again when they fail or are answered locally. */
   private stopped = new WeakSet<Request>();
@@ -75,14 +83,25 @@ export class Recorder {
     await ctx.addInitScript(LISTENER_SCRIPT);
 
     ctx.on("request", (req) => {
-      this.inflight++;
       this.lastActivity = Date.now();
-      this.starts.set(req, { id: this.nextId("x"), ts: this.now(), causedBy: this.cause() });
+      this.starts.set(req, {
+        id: this.nextId("x"),
+        ts: this.now(),
+        causedBy: this.cause(),
+        stream: req.resourceType() === "eventsource" || undefined,
+      });
     });
     // Ask for the body the moment the response starts: once the page navigates away, the browser drops it.
     ctx.on("response", (res) => {
+      const start = this.starts.get(res.request());
+      if (start) {
+        start.headersAt = Date.now();
+        if (/^text\/event-stream\b/i.test(res.headers()["content-type"] ?? "")) start.stream = true;
+      }
       const status = res.status();
       if ((status >= 300 && status < 400) || status === 204) return;
+      // A stream has no end to wait for: its body is only there once the page gives it up.
+      if (start?.stream) return;
       const p = res.body().catch(() => null);
       this.bodyOf.set(res.request(), p);
       this.track(p);
@@ -137,8 +156,7 @@ export class Recorder {
   private async finish(req: Request, failed?: string) {
     const start = this.starts.get(req);
     this.starts.delete(req);
-    this.inflight = Math.max(0, this.inflight - 1);
-    this.lastActivity = Date.now();
+    if (!start?.stream) this.lastActivity = Date.now();
     if (!start || this.stopped.has(req)) return;
     const url = req.url();
     if (!/^https?:/.test(url)) return;
@@ -256,13 +274,34 @@ export class Recorder {
     this.track(this.settleAndSnapshot(page, "settled", owner, gen));
   }
 
+  /**
+   * Requests still worth waiting for. A stream (an EventSource, a `text/event-stream` response, a body that is still
+   * arriving `STREAM_AFTER_MS` after its headers) never finishes while the page is open, so it does not count.
+   */
+  inflight(): number {
+    const now = Date.now();
+    let n = 0;
+    for (const [req, s] of this.starts) {
+      if (s.stream) continue;
+      if (s.headersAt !== undefined && now - s.headersAt >= STREAM_AFTER_MS) {
+        s.stream = true;
+        // Its body was asked for when the headers came; `flush()` must not wait for it.
+        const body = this.bodyOf.get(req);
+        if (body) this.pending.delete(body);
+        continue;
+      }
+      n++;
+    }
+    return n;
+  }
+
   /** Wait until the network has been quiet, capped. Returns false when `stale` says the wait no longer matters. */
   async settle(stale?: () => boolean): Promise<boolean> {
     const deadline = Date.now() + SETTLE_CAP_MS;
     while (Date.now() < deadline) {
       if (stale?.()) return false;
       const quietFor = Date.now() - this.lastActivity;
-      if (this.inflight === 0 && quietFor >= SETTLE_QUIET_MS) break;
+      if (this.inflight() === 0 && quietFor >= SETTLE_QUIET_MS) break;
       await new Promise((r) => setTimeout(r, 100));
     }
     return !stale?.();

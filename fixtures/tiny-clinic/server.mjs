@@ -107,6 +107,23 @@ ${body}
     if (path === "/app.js")
       return send(200, APP_JS, { "content-type": "application/javascript", "cache-control": "max-age=3600" });
     if (path === "/beacon") return send(204, "");
+    // A server-sent-event stream that never ends, like a live-update feed. Nothing in the app's pages opens it;
+    // tests do, to check that an open stream does not hold up the recorder.
+    if (path === "/events") {
+      res.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-store" });
+      res.write(`data: ${new Date().toISOString()}\n\n`);
+      const t = setInterval(() => res.write(`data: ${new Date().toISOString()}\n\n`), 1000);
+      req.on("close", () => clearInterval(t));
+      return;
+    }
+    // The same without the content type: a body that keeps coming after its headers.
+    if (path === "/events/plain") {
+      res.writeHead(200, { "content-type": "application/octet-stream", "cache-control": "no-store" });
+      res.write("tick\n");
+      const t = setInterval(() => res.write("tick\n"), 1000);
+      req.on("close", () => clearInterval(t));
+      return;
+    }
     if (path === "/__reset" && req.method === "POST") {
       db = SEED();
       return json(200, { ok: true });
