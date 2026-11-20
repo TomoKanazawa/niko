@@ -2,7 +2,7 @@
 
 > An exact working copy of any web app, as a sandbox for testing AI agents. Record a web app once, then run it as a local mock server that serves the app's own front-end at the app's original URLs. Browser agents, computer-use agents and tool-calling agents run against the copy instead of the real thing.
 
-Niko is an open-source command-line tool (Apache-2.0, TypeScript, Node 22, Playwright). It runs on your machine and sends nothing anywhere; the optional `niko build` step uses your own Anthropic API key to have a model write a stateful copy. Source: https://github.com/TomoKanazawa/niko
+Niko is an open-source command-line tool (Apache-2.0, TypeScript, Node 22, Playwright). It runs on your machine and sends nothing to its makers; the optional `niko build` step uses your own Anthropic API key to have a model write a stateful copy, and the optional `niko record` / `niko serve` pair records an app on one machine (where the login is) and builds the copy on another (your own server). Source: https://github.com/TomoKanazawa/niko
 
 ## Documentation
 

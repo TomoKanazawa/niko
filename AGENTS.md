@@ -25,12 +25,22 @@ Three commands are interactive by default. Use the forms on the right.
 
 `niko login` always needs a person. If the app's login needs a person (a CAPTCHA, a code sent to a phone,
 single sign-on), stop and ask the person you are working for to run `niko init <url>` or `niko login`
-themselves. Do not try to get around it.
+themselves. Do not try to get around it. To re-run a drift check later without a person logging in again, a
+person can export the app's cookies from their own browser and you feed them in with `niko adopt <file>`; Niko
+stores no password. Do not export or handle anyone's cookies unless the person told you to.
 
-Two commands do not return until stopped: `niko up`, and the test app
-`node fixtures/tiny-clinic/server.mjs`. Start them in the background, or in a separate terminal, and stop them
-with `niko down` and by killing the process. Add `--headless` to `up`, `capture` and `drift` if you have no
-display.
+Five commands do not return until stopped: `niko up`, `niko adopt --serve` (a localhost receiver for pushed
+sessions), `niko serve` (the receiver for recordings made on other machines), `niko record` without `--once`
+(it re-checks the app every hour), and the test app `node fixtures/tiny-clinic/server.mjs`. Start them in the
+background, or in a separate terminal, and stop `up` with `niko down` and the others by killing the process.
+`niko drift --wait <minutes>` also blocks, for up to that long, while it waits for a session. Add `--headless`
+to `up`, `capture` and `drift` if you have no display; `niko record` shows no window unless asked.
+
+When the app is recorded on one machine and the copy is built on another (guide, section 10): `niko record`
+opens a login window the first time, so on a machine with no person use `niko record --once --no-login`, then
+`niko adopt <file>`, then `niko record --once`. Give it the token through `NIKO_TOKEN`, not on the command
+line, and never print the token. `niko serve` spends money only when started with `--max-usd`, and that amount
+is the total per app: tell the person the cap before you start it.
 
 Your shell may not keep variables, aliases or the working folder between commands. Use the full path of
 `bin/niko`, and `cd` into the working folder in the same command line as each call:
@@ -61,7 +71,9 @@ cd /path/to/workdir && /path/to/niko/bin/niko analyze
 - **On a test system that was reset since the last capture, record with `--after-reset`**, or `niko verify`
   will fail for a reason that is not a fault in the copy.
 - **Do not commit or upload anything under `.niko/`.** It holds the unscrubbed recording, a browser profile
-  with a live login, and session cookies.
+  with a live login, and session cookies. The one sanctioned way for a recording to leave a machine is
+  `niko record`, which sends only the scrubbed copy, and only to the receiver the person named. Do not point it
+  at a server the person did not give you.
 - **Do not add anything to this repository that defeats bot detection**, and do not add recordings of other
   companies' software to it.
 
@@ -104,7 +116,7 @@ Never include the contents of `.niko/<app>/captures/`, cookies or keys in a repo
 ```bash
 pnpm install
 pnpm --filter useniko exec playwright install chromium
-pnpm build && pnpm test      # 21 tests, about a minute
+pnpm build && pnpm test      # 64 tests, about four minutes
 pnpm lint
 ```
 

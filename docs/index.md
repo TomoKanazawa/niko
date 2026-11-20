@@ -6,8 +6,9 @@ You point it at a web app you can log in to. It records the app while it is used
 serves the app's own pages and scripts at the app's own addresses. Your agent works in the copy: no client
 access needed, nothing real gets changed, and a reset takes under a second.
 
-It runs on your machine and sends nothing anywhere. The only outside call is to Anthropic, with your own API
-key, and only when you run `niko build`.
+It runs on your machine and sends nothing to us. The only outside call is to Anthropic, with your own API
+key, and only when a copy is built. If the recording is made on someone else's machine, `niko record` sends
+it to your own server and nowhere else.
 
 ## Where to start
 

@@ -33,7 +33,7 @@ export class SessionExpired extends Error {
   }
 }
 
-const LOGIN_RE = /(^|[/_.-])(login|signin|sign-in|sso|authenticate)([/_.-]|$)/i;
+export const LOGIN_RE = /(^|[/_.-])(login|signin|sign-in|sso|authenticate)([/_.-]|$)/i;
 const CONTROL_ROLES = /^(button|textbox|combobox|checkbox|radio|tab|menuitem|searchbox|switch|slider|spinbutton)$/;
 
 /** Field names and types of a JSON value, values removed. */
@@ -99,13 +99,16 @@ export async function drift(
 ): Promise<DriftReport> {
   const { clusters, volatile, corpus } = loadAnalysis(paths, config);
   const classOf = new Map(clusters.map((c) => [c.id, c]));
-  const latest = new Map<string, Ex>();
+  // The baseline is what the newest recording says about each request. One that the newest recording already
+  // shows as gone (a 404 taken in after an earlier check) is not checked again, or it would be reported forever.
+  const newest = new Map<string, Ex>();
   for (const x of corpus.exchanges) {
     const c = classOf.get(x.cluster ?? "");
-    if (!c || x.method !== "GET" || x.status !== 200 || !x.inScope) continue;
+    if (!c || x.method !== "GET" || !x.inScope) continue;
     if (c.class !== "read" && c.class !== "static") continue;
-    latest.set(x.instance!, x);
+    newest.set(x.instance!, x);
   }
+  const latest = new Map([...newest].filter(([, x]) => x.status === 200));
   const pages = [...latest.values()].filter(
     (x) =>
       x.resourceType === "document" &&
@@ -276,7 +279,10 @@ export async function drift(
   // UI: controls an agent would look for. Compared per endpoint, not per page, because which controls a page shows
   // depends on its data (a patient with no notes has no "Delete note" button): a control is gone only when no
   // visited page of that endpoint shows it any more, and new only when no recorded page of it ever did.
-  const before = new Map<string, Set<string>>();
+  // "Any more" is measured against the newest recording of the endpoint: a control that an older recording had and
+  // a later one already lost was reported then, and must not be reported at every check after it.
+  const ever = new Map<string, Set<string>>();
+  const lately = new Map<string, { capture: string; controls: Set<string> }>();
   for (const s of corpus.snapshots) {
     const f = s.files.find((x) => x.endsWith(".aria.txt"));
     if (!f || !existsSync(join(s.dir, f))) continue;
@@ -285,9 +291,14 @@ export async function drift(
       c = resolveRequest(clusters, "GET", s.url, "", "").cluster;
     } catch {}
     if (!c) continue;
-    const set = before.get(c.id) ?? new Set<string>();
-    for (const k of controlsOf(readFileSync(join(s.dir, f), "utf8"))) set.add(k);
-    before.set(c.id, set);
+    const controls = controlsOf(readFileSync(join(s.dir, f), "utf8"));
+    const set = ever.get(c.id) ?? new Set<string>();
+    for (const k of controls) set.add(k);
+    ever.set(c.id, set);
+    // Capture ids are timestamps, so the larger one is the later one.
+    const last = lately.get(c.id);
+    if (!last || s.capture > last.capture) lately.set(c.id, { capture: s.capture, controls: new Set(controls) });
+    else if (s.capture === last.capture) for (const k of controls) last.controls.add(k);
   }
   const after = new Map<string, Set<string>>();
   for (const x of visit) {
@@ -298,12 +309,13 @@ export async function drift(
     after.set(x.cluster!, set);
   }
   for (const [id, now_] of after) {
-    const was = before.get(id);
+    const was = lately.get(id)?.controls;
     if (!was) continue;
     const c = classOf.get(id)!;
-    const d = diffSets(was, now_);
-    for (const r of d.removed) add("breaking", "ui", `${c.pathTemplate}: control gone or renamed: ${r}`, c);
-    for (const r of d.added) add("behavioural", "ui", `${c.pathTemplate}: new control: ${r}`, c);
+    for (const r of diffSets(was, now_).removed)
+      add("breaking", "ui", `${c.pathTemplate}: control gone or renamed: ${r}`, c);
+    for (const r of diffSets(ever.get(id)!, now_).added)
+      add("behavioural", "ui", `${c.pathTemplate}: new control: ${r}`, c);
   }
 
   const order: Severity[] = ["breaking", "behavioural", "cosmetic"];

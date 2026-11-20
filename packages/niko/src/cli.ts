@@ -5,15 +5,27 @@ import { totalmem } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { Command } from "commander";
+import { adoptCookies, parseCookies, serveAdopt } from "./adopt/index.js";
 import { analyze } from "./analyze/index.js";
 import { build, estimateBuild } from "./builder/index.js";
 import { type CaptureOptions, capture, forgetSession, launchBrowser, loadPolicy, savePolicy } from "./capture/index.js";
 import { SessionExpired, adoptDriftCapture, drift, scheduleDaily } from "./drift/index.js";
 import { initApp } from "./init.js";
+import { checkServer, connect, hasLogin, recordOnce, savedRemote } from "./remote/recorder.js";
+import { issueToken, serveRecordings } from "./remote/server.js";
 import { up } from "./runtime/server.js";
 import { reviewSample, scrubCapture } from "./scrub/index.js";
 import type { Ledger, Manifest } from "./types.js";
-import { TOOL_VERSION, appPaths, listCaptures, loadConfig, readJson, resolveApp, writeJson } from "./util.js";
+import {
+  TOOL_VERSION,
+  appPaths,
+  listCaptures,
+  loadConfig,
+  readJson,
+  resolveApp,
+  saveConfig,
+  writeJson,
+} from "./util.js";
 import { reportMarkdown, verify } from "./verify/index.js";
 
 const CLI = fileURLToPath(import.meta.url);
@@ -48,21 +60,37 @@ withApp(program.command("init <url>").description("Set up a new app and open Chr
     "--real-account",
     "the login is (or may be) a real person's account: every capture is read-only, paced, and never sends a change",
   )
-  .action(async (url: string, o: { app?: string; origin?: string[]; login: boolean; realAccount?: boolean }) => {
-    const u = new URL(url);
-    const { paths, config } = initApp(url, {
-      app: o.app,
-      origins: o.origin ? [u.origin, ...o.origin] : undefined,
-      realAccount: o.realAccount,
-    });
-    out(`Created ${paths.root}`);
-    if (config.realAccount)
-      out(
-        "Real-account mode: nothing that changes the account (posting, voting, saving, deleting, logging out) is ever sent, whoever clicks it.",
-      );
-    if (o.login) await openForLogin(paths, config.startUrl, !!config.realAccount);
-    out("Next: niko capture");
-  });
+  .option(
+    "--remote",
+    "the app is recorded on another machine: print the token its recorder needs, and do not log in here",
+  )
+  .action(
+    async (
+      url: string,
+      o: { app?: string; origin?: string[]; login: boolean; realAccount?: boolean; remote?: boolean },
+    ) => {
+      const u = new URL(url);
+      const { paths, config } = initApp(url, {
+        app: o.app,
+        origins: o.origin ? [u.origin, ...o.origin] : undefined,
+        realAccount: o.realAccount,
+      });
+      out(`Created ${paths.root}`);
+      if (o.remote) {
+        out("This app is recorded on another machine. Start the receiver here with: niko serve");
+        out("On the machine that can log in to the app, run:");
+        out(`  niko record --server <this receiver's https address> --token ${issueToken(paths)}`);
+        out("The token is shown only now and is for this app only. Running this command again replaces it.");
+        return;
+      }
+      if (config.realAccount)
+        out(
+          "Real-account mode: nothing that changes the account (posting, voting, saving, deleting, logging out) is ever sent, whoever clicks it.",
+        );
+      if (o.login) await openForLogin(paths, config.startUrl, !!config.realAccount);
+      out("Next: niko capture");
+    },
+  );
 
 withApp(program.command("login").description("Open Chrome with the saved profile to log in again")).action(
   async (o) => {
@@ -77,6 +105,65 @@ withApp(
   const { paths } = ctx(o);
   out(forgetSession(paths) ? "The saved login was deleted." : "There was no saved login.");
 });
+
+withApp(
+  program
+    .command("adopt [file]")
+    .description("Take in a login a person made in their own browser, instead of logging in here"),
+)
+  .option("--serve", "keep a localhost receiver open and take in each session as it is pushed")
+  .option("--port <n>", "receiver port (with --serve)", (v) => Number.parseInt(v, 10), 8899)
+  .option("--no-probe", "do not check the session against the live app")
+  .action(async (file: string | undefined, o) => {
+    const { paths, config } = ctx(o);
+    if (o.serve) {
+      const h = await serveAdopt(paths, config, { port: o.port });
+      out(`Session receiver for ${config.app} is listening. No password is ever sent or stored.`);
+      out(`  Push a session to:  POST ${h.url}/session`);
+      out(`  With the header:    Authorization: Bearer ${h.token}`);
+      out("  Body:               the app's cookies as a JSON array exported from any browser.");
+      out("Press Ctrl-C to stop.");
+      await new Promise<void>((done) => process.on("SIGINT", () => h.close().then(done)));
+      return;
+    }
+    if (!file) throw new Error("Give a cookies file, or use --serve. See `niko adopt --help`.");
+    const r = await adoptCookies(paths, config, parseCookies(readFileSync(resolve(file), "utf8")), {
+      probe: o.probe,
+    });
+    if (!r.kept) {
+      out(`None of those cookies are for ${config.origins.join(", ")}. Nothing was taken in.`);
+      process.exitCode = 1;
+      return;
+    }
+    out(`Took in ${r.kept} cookies for ${config.app}${r.dropped ? ` (ignored ${r.dropped} for other sites)` : ""}.`);
+    if (r.probe) {
+      out(r.probe.live ? `The session is live: ${r.probe.reason}.` : `The session looks dead: ${r.probe.reason}.`);
+      if (!r.probe.live) process.exitCode = 1;
+    }
+  });
+
+/** With --wait, hold a receiver open for a fresh human login and return once one proves live. */
+async function waitForLiveSession(
+  paths: ReturnType<typeof appPaths>,
+  config: ReturnType<typeof loadConfig>,
+  minutes: number,
+  port: number,
+): Promise<boolean> {
+  let live = false;
+  const h = await serveAdopt(paths, config, {
+    port,
+    onAdopt: (r) => {
+      if (r.probe?.live) live = true;
+    },
+  });
+  out(
+    `The saved login has expired. Waiting up to ${minutes} min for a fresh one: push the app's cookies to POST ${h.url}/session (header Authorization: Bearer ${h.token}).`,
+  );
+  const deadline = Date.now() + minutes * 60_000;
+  while (!live && Date.now() < deadline) await new Promise((r) => setTimeout(r, 1000));
+  await h.close();
+  return live;
+}
 
 async function openForLogin(paths: ReturnType<typeof appPaths>, url: string, realAccount = false) {
   out(
@@ -168,11 +255,18 @@ withApp(program.command("scrub").description("Remove secrets (and optionally per
     const { paths, config } = ctx(o);
     const mode = o.pii ? "pii" : o.off ? "secrets" : config.scrub;
     for (const id of listCaptures(paths)) {
-      const r = await scrubCapture(paths, id, mode);
-      out(`${id}: ${r.secrets} secrets, ${r.pii} personal values, ${r.replacements} replacements`);
+      // A recording received from `niko record` has no raw copy here: there is nothing to scrub it again from.
+      if (!existsSync(join(paths.captures, id, "episodes")))
+        out(`${id}: recorded on another machine and scrubbed there; it cannot be scrubbed again here`);
+      else {
+        const r = await scrubCapture(paths, id, mode);
+        out(`${id}: ${r.secrets} secrets, ${r.pii} personal values, ${r.replacements} replacements`);
+        if (o.review) {
+          out("  Replaced with (sample):");
+          for (const s of r.samples) out(`    ${s.kind}: ${s.fake}`);
+        }
+      }
       if (o.review) {
-        out("  Replaced with (sample):");
-        for (const s of r.samples) out(`    ${s.kind}: ${s.fake}`);
         out("  Still present and looks like a name or date (check these):");
         for (const s of reviewSample(paths, id)) out(`    ${s}`);
       }
@@ -333,9 +427,15 @@ withApp(program.command("drift").description("Re-check the live app and report w
   .option("--headless", "no visible window")
   .option("--update", "take the new recording into the copy and rebuild the affected endpoints")
   .option("--max-usd <x>", "with --update: spending cap for the rebuild", Number.parseFloat)
+  .option(
+    "--wait <minutes>",
+    "if the saved login has expired, hold a receiver open this long for a fresh one (see `niko adopt`)",
+    Number.parseFloat,
+  )
+  .option("--port <n>", "receiver port (with --wait)", (v) => Number.parseInt(v, 10), 8899)
   .action(async (o) => {
     const { paths, config } = ctx(o);
-    try {
+    const run = async () => {
       const r = await drift(paths, config, { headless: !!o.headless });
       out(readFileSync(join(paths.drift, "drift-report.md"), "utf8"));
       if (o.update && r.items.length) {
@@ -355,10 +455,128 @@ withApp(program.command("drift").description("Re-check the live app and report w
         } else out("The copy now replays the new recording.");
       }
       process.exitCode = r.worst === "breaking" ? 2 : r.worst === "none" ? 0 : 1;
+    };
+    try {
+      await run();
     } catch (e) {
       if (!(e instanceof SessionExpired)) throw e;
+      if (o.wait && (await waitForLiveSession(paths, config, o.wait, o.port))) {
+        try {
+          await run();
+          return;
+        } catch (e2) {
+          if (!(e2 instanceof SessionExpired)) throw e2;
+        }
+      }
       out(e.message);
       process.exitCode = 3;
+    }
+  });
+
+program
+  .command("serve")
+  .description("Receive recordings made on other machines (niko record) and keep each app's copy up to date")
+  .option("--port <n>", "port to listen on", (v) => Number.parseInt(v, 10), 8787)
+  .option("--host <address>", "address to listen on; other machines reach it through your TLS proxy", "127.0.0.1")
+  .option("--cert <file>", "serve https yourself: the certificate (with --key)")
+  .option("--key <file>", "serve https yourself: the private key (with --cert)")
+  .option("--max-usd <x>", "build the stateful copy, spending at most this much per app in total", Number.parseFloat)
+  .action(async (o) => {
+    if (!!o.cert !== !!o.key) throw new Error("Give --cert and --key together.");
+    const local = ["127.0.0.1", "localhost", "::1"].includes(o.host);
+    const h = await serveRecordings(process.cwd(), {
+      port: o.port,
+      host: o.host,
+      tls: o.cert ? { cert: readFileSync(resolve(o.cert)), key: readFileSync(resolve(o.key)) } : undefined,
+      maxUsd: o.maxUsd,
+      log: out,
+    });
+    out(`Receiver listening on ${h.url}. Register an app with: niko init <url> --remote`);
+    if (!local && !o.cert)
+      out(
+        "This is plain http on a network address. Recorders only talk https: put a TLS proxy in front, or use --cert and --key.",
+      );
+    out(
+      o.maxUsd === undefined
+        ? "No --max-usd: each recording updates a replay copy and nothing is spent."
+        : `Each recording is built into a stateful copy, for at most $${o.maxUsd} per app in total. Uses your ANTHROPIC_API_KEY.`,
+    );
+    out("Press Ctrl-C to stop.");
+    await new Promise<void>((done) => process.on("SIGINT", () => h.close().then(done)));
+  });
+
+withApp(
+  program
+    .command("record")
+    .description("Record the app on this machine, read-only, and send the scrubbed recording to a niko serve receiver"),
+)
+  .option("--server <url>", "the receiver's https address (or NIKO_SERVER); needed the first time only")
+  .option("--token <token>", "the token printed by `niko init <url> --remote` (or NIKO_TOKEN); first time only")
+  .option("--every <minutes>", "how often to re-check the app", Number.parseFloat, 60)
+  .option("--once", "one round, then stop")
+  .option("--human", "first recording: you use the app in the window, instead of the automatic crawl")
+  .option("--show", "show the browser window while it records")
+  .option("--no-login", "do not open a window to log in when there is no saved login")
+  .option("--max-actions <n>", "first recording: stop the crawl after this many actions", (v) => Number.parseInt(v, 10))
+  .option("--delay <seconds>", "wait this long between page and data requests to the app; remembered", (v) =>
+    Number.parseFloat(v),
+  )
+  .action(async (o) => {
+    const server = o.server ?? process.env.NIKO_SERVER;
+    const token = o.token ?? process.env.NIKO_TOKEN;
+    let paths: ReturnType<typeof appPaths>;
+    let config: ReturnType<typeof loadConfig>;
+    if (server && token) ({ paths, config } = await connect({ server, token }));
+    else if (server || token) throw new Error("Give both --server and --token (or NIKO_SERVER and NIKO_TOKEN).");
+    else ({ paths, config } = ctx(o));
+    const remote = savedRemote(paths);
+    if (!remote)
+      throw new Error("This app is not connected to a receiver yet. Run: niko record --server <url> --token <token>");
+    checkServer(remote.server);
+    if (o.delay !== undefined) {
+      config = { ...config, delaySeconds: o.delay };
+      saveConfig(paths, config);
+    }
+    out(`Recording ${config.app} for ${remote.server}. Read-only: nothing that changes the app is sent.`);
+    out(
+      "The login, the raw recording and the browser profile stay on this machine. Only the scrubbed recording is sent.",
+    );
+    if (!hasLogin(paths) && o.login) await openForLogin(paths, config.startUrl, true);
+    for (;;) {
+      const round = recordOnce(paths, config, remote, {
+        human: !!o.human,
+        headless: !o.show,
+        maxActions: o.maxActions,
+        log: out,
+      });
+      // Left running, one bad round (the receiver is down, the network dropped) must not end the recorder:
+      // what was recorded is kept and sent at the next round.
+      const t = o.once
+        ? await round
+        : await round.catch((e: Error) => {
+            out(`This round failed: ${e.message} Trying again at the next one.`);
+            return undefined;
+          });
+      if (!t) {
+        await new Promise((r) => setTimeout(r, o.every * 60_000));
+        continue;
+      }
+      out(
+        {
+          recorded: `First recording ${t.capture} made and sent.`,
+          unchanged: "Checked: the app has not changed.",
+          drift: `The app changed (${t.detail}). Recording ${t.capture} sent.`,
+          "session-expired":
+            "The login has expired. Log in again with `niko login`, or hand over a session with `niko adopt`.",
+          "not-logged-in":
+            "Only a login page was seen, so nothing was recorded. Log in with `niko login`, or hand over a session with `niko adopt`.",
+        }[t.state],
+      );
+      if (o.once) {
+        if (t.state === "session-expired" || t.state === "not-logged-in") process.exitCode = 3;
+        return;
+      }
+      await new Promise((r) => setTimeout(r, o.every * 60_000));
     }
   });
 
@@ -369,7 +587,9 @@ withApp(program.command("schedule <when>").description("Run the drift check ever
     const { app } = ctx(o);
     const s = scheduleDaily(process.cwd(), app, CLI, o.hour);
     out(`Wrote ${s.file}\nTurn it on with:\n  ${s.enable}`);
-    out("The check uses the saved login. When the app's session expires it stops and asks you to run `niko login`.");
+    out(
+      "The check uses the saved login. When the app's session expires, feed it a fresh one with `niko adopt` (no re-login here needed), or add `--wait <minutes>` to hold a receiver open for one.",
+    );
   });
 
 program

@@ -127,6 +127,12 @@ const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 export async function scrubCapture(paths: AppPaths, id: string, mode: "secrets" | "pii"): Promise<ScrubReport> {
   const base = join(paths.captures, id);
   const out = join(base, "scrubbed");
+  // A recording received from another machine arrives scrubbed, with no raw copy. Scrubbing it "again" would
+  // replace it with nothing.
+  if (!existsSync(join(base, "episodes")))
+    throw new Error(
+      `Capture ${id} was recorded on another machine and scrubbed there; only that machine can scrub it again.`,
+    );
   rmSync(out, { recursive: true, force: true });
   ensureDir(join(out, "episodes"));
   ensureDir(join(out, "snapshots"));

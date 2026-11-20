@@ -32,8 +32,31 @@ replica/
 build/                   builder input (build set only) and state.json for resume
 held-out/                ids the builder must not see
 drift/                   drift.json, drift-report.md
-run/                     the running copy's database and Chrome profile
+run/                     the running copy's database and Chrome profile; serve.json on a receiving server
+recorder.json            on a recording machine: receiver address, token, recordings already sent. Treat like a password
+upload-token.sha256      on a receiving server: the hash of the token this app's recorder must send
+incoming/                on a receiving server: a recording while it is being received; empty otherwise
 ```
+
+## Packs
+
+A pack is one recording on its way from `niko record` to `niko serve`. It is a gzipped stream: the line
+`NIKOPACK1`, then for each file a 2-byte name length, the name, an 8-byte size and the bytes, ended by a name
+length of zero. It may hold only these names, and the receiver refuses anything else:
+
+```
+manifest.json
+coverage.json            the crawl's link coverage, when the recording was a crawl
+policy.yaml              the recorder's read/write decisions; added where the receiver has none of its own
+drift.json               present when the recording was made because the app changed: the keys of the changed endpoints
+scrubbed/episodes/<n>.jsonl
+scrubbed/bodies/<sha256>  refused when the content does not match the name
+scrubbed/snapshots/<file>
+```
+
+The raw recording, the HAR file, `pseudonyms.json`, `session-cookies.json` and `profile/` are never in a pack.
+On the receiver a recording therefore has only `manifest.json`, `coverage.json`, `drift.json` and `scrubbed/`,
+and `niko scrub` leaves it as it is.
 
 ## Request classes
 

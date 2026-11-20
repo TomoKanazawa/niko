@@ -1,6 +1,6 @@
-# Status (2026-11-18)
+# Status (2026-11-19)
 
-Version 0.1.0. 44 automated tests pass on the test apps `fixtures/tiny-clinic` and `fixtures/tiny-news`. One public site
+Version 0.1.0. 64 automated tests pass on the test apps `fixtures/tiny-clinic` and `fixtures/tiny-news`. One public site
 (demo.playwright.dev/todomvc, HTTPS) was recorded and replayed with the network disabled, with no console errors.
 
 ## Built and tested
@@ -17,7 +17,10 @@ Version 0.1.0. 44 automated tests pass on the test apps `fixtures/tiny-clinic` a
 | Build | Supervisor with steps, saved state, resume, budget stop, repair loop, tool restrictions. Tested with a scripted stand-in for the model |
 | Real-account mode | `init --real-account`: every capture gated (person, script, crawl); token-carrying links, social verbs, image pings and beacons refused; page stays put with a notice; pacing from robots.txt; stop on 429/503 or a slow-down page; `forget` and `--forget-after`; coverage.json per crawl. On tiny-news, a crawl and a script that votes, hides, comments, favorites and logs out change nothing |
 | Stopped writes | Kept as endpoints with no answer (`analysis/blocked.json`); the builder writes inferred handlers for them, labelled `inferred`. Not yet run with a real model |
-| Drift | Read-only re-check with the saved login; API shape, form fields and controls compared; severity; session-expiry stop; daily schedule file |
+| Drift | Read-only re-check with the saved login; API shape, form fields and controls compared; severity; session-expiry stop; daily schedule file. A change is measured against the newest recording, so once it has been taken in (`--update`, or a recorder's re-send) it is not reported again |
+| Login hand-off | `niko adopt <file>` or `--serve`: reuse a session a person made in their own browser instead of logging in here. Cookies are kept only for the app's origin, written `0600`, and checked against a recorded logged-in page before they are trusted. The receiver binds to `127.0.0.1` and needs a bearer token. `niko drift --wait <minutes>` holds it open for a fresh login. No password is stored. On the clinic app, a dropped session is recovered from an adopted one and drift then runs, with no re-login in the tool |
+
+| Record on one machine, build on another | `niko record` on the machine with the login, `niko init --remote` and `niko serve` on yours. The recorder is always in real-account mode, makes the first recording by crawl (or `--human`), then re-checks every hour and sends a new recording only for changes an agent would notice, each set of changes once. Only the scrubbed recording travels, as a pack whose file names are checked one by one and whose bodies must match their hashes; https only, except to localhost. One token per app, kept as a hash; a token cannot file a recording under another app. The receiver analyzes each recording and, with `--max-usd`, builds within a total per app. On the clinic app: the session id is in no file on the receiving side, a changed app is re-sent once and its changed endpoints handed to the builder, an expired login is reported and nothing is sent. The receiving side was tested with a stand-in for the builder, and run by hand without `--max-usd`: a page recorded on one folder was served by `niko up` from the other |
 
 ## Not yet run
 
@@ -64,6 +67,9 @@ Version 0.1.0. 44 automated tests pass on the test apps `fixtures/tiny-clinic` a
 | WebSocket and server-sent-event replay | Recorded; the copy rejects WebSocket connections. An open stream (`EventSource`, `text/event-stream`, a body still arriving two seconds after its headers) is ignored while the recorder waits for a page to settle, so a live-update feed no longer adds the 10-second cap to every crawl step |
 | Several copies at once, date shifting for `--today` | One copy; `--today` only switches to the real clock |
 | Dockerfile, compose file, GitHub Action, Windows scheduling, pixel diff | Not started |
+| A packaged recorder for the machine with the login | `niko record` is this command-line tool: that machine needs Node and a browser. It has not been run across two real machines or through a TLS proxy, only between two folders on one machine |
+| `niko serve` building with a real model | The wiring is tested with a stand-in. `niko serve --max-usd` has not been run with a real model |
+| The receiver restarting the sandbox | After a new recording, stop and start `niko up` yourself |
 | Telemetry | None. The tool sends nothing |
 
 ## Changes from the plan

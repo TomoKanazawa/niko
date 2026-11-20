@@ -17,11 +17,12 @@ The tool is early. It has been run on its test app and one simple public site, n
 7. [Make the copy keep state](#7-make-the-copy-keep-state)
 8. [Know what to trust](#8-know-what-to-trust)
 9. [Keep up with the real app](#9-keep-up-with-the-real-app)
-10. [Secrets and personal data](#10-secrets-and-personal-data)
-11. [Command reference](#11-command-reference)
-12. [Files](#12-files)
-13. [Troubleshooting](#13-troubleshooting)
-14. [Limits](#14-limits)
+10. [Record on one machine, build on another](#10-record-on-one-machine-build-on-another)
+11. [Secrets and personal data](#11-secrets-and-personal-data)
+12. [Command reference](#12-command-reference)
+13. [Files](#13-files)
+14. [Troubleshooting](#14-troubleshooting)
+15. [Limits](#15-limits)
 
 ## 1. What you get
 
@@ -48,8 +49,10 @@ The copy never makes an answer up. If it has nothing recorded for a request, it 
   data onto your machine. Check the app's terms and your agreement with whoever owns the data.
 - **Use a test account or a test record if you can.** A person's recording session does whatever that person
   does, including real changes.
-- **Everything stays on your machine.** The tool sends nothing anywhere, with one exception: `niko build`
-  sends recorded pages and responses (with secrets removed) to Anthropic, using your API key.
+- **Everything stays on your machine.** The tool sends nothing anywhere, with two exceptions. `niko build`
+  sends recorded pages and responses (with secrets removed) to Anthropic, using your API key. And `niko record`,
+  which you only run when the copy is built on another machine, sends the recording (with secrets removed) to
+  the receiver you name (section 10).
 - **The tool does not get around bot detection, CAPTCHAs or multi-factor login.** A person logs in; the tool
   reuses that session.
 
@@ -256,7 +259,7 @@ The key is the method, the host and the path pattern exactly as `niko policy` pr
 
 ### After every capture
 
-The tool removes secrets from the capture (section 10) and regroups all captures into endpoints. `niko
+The tool removes secrets from the capture (section 11) and regroups all captures into endpoints. `niko
 analyze` prints the summary again at any time:
 
 ```
@@ -522,7 +525,180 @@ Changes in data alone (a new patient, a different total) are not drift.
   command that turns it on (a launchd file on macOS, a cron line on Linux).
 - `niko login` opens the browser so a person can log in again.
 
-## 10. Secrets and personal data
+### Staying logged in without a stored password
+
+Some apps end a session quickly, so a daily drift check keeps running into an expired login. Niko never stores
+a password to solve this. Instead it reuses a session a person already made in their own browser, during their
+normal use of the app. Niko does the recording and the drift check; a human does the logging in.
+
+There are two ways to hand a fresh session over.
+
+**Drop a cookies file.** Export the app's cookies from whatever browser the person uses (Firefox, Safari, Edge
+or Chrome, through its developer tools or a cookie-export add-on) and take them in:
+
+```bash
+niko adopt cookies.json
+```
+
+Niko keeps only the cookies for the app's own address, writes them to the saved login, and then loads a
+recorded page to check the session is really signed in. It prints whether the session is live. Nothing else in
+the file is read, and no password is involved.
+
+**Keep a receiver open.** For unattended monitoring, run a small receiver on your machine:
+
+```bash
+niko adopt --serve
+```
+
+It listens on `127.0.0.1` only, prints a one-line address and a token, and takes in a session each time one is
+pushed to it, so whenever the person signs in during their day the fresh session flows straight to Niko. A
+browser add-on, a cookie-export tool, or a line of `curl` can do the pushing. The token must be sent with every
+push, so nothing else on the machine can inject a session.
+
+Then let the daily check wait for that session instead of stopping:
+
+```bash
+niko drift --wait 480
+```
+
+If the saved login has expired, drift holds the receiver open for up to the given number of minutes, and runs
+the moment a live session arrives. No one logs in to Niko itself.
+
+One limit worth knowing: an app's session cookie is almost always marked **HttpOnly**, which means ordinary
+page JavaScript cannot read it. A bookmarklet will not work. Exporting through the browser's developer tools or
+an add-on does see HttpOnly cookies, which is why the hand-over is a file or a push, not a script in the page.
+
+## 10. Record on one machine, build on another
+
+Use this when the login belongs to someone else (a client, a customer, another office) and the copy is for you.
+The recording is made on their machine, with the login they make there. The copy is built and run on yours.
+
+```
+Machine with the login                    Your server
+----------------------                    -----------
+niko record        -- scrubbed -->        niko serve
+(read-only, uses      recording           (builds and checks the copy)
+ the login made       over https          niko up
+ on that machine)                         (the sandbox)
+      |                                        ^
+      v                                        |
+ the real app                             your developers
+                                          and their agent
+```
+
+Recording from their machine also means the app sees the address it always sees. A session used from two places
+at once is what a stolen session looks like, and some apps end it.
+
+### On your server
+
+Register the app. This does not open a browser:
+
+```bash
+niko init https://app.example.com --remote
+```
+
+```
+This app is recorded on another machine. Start the receiver here with: niko serve
+On the machine that can log in to the app, run:
+  niko record --server <this receiver's https address> --token <token>
+The token is shown only now and is for this app only. Running this command again replaces it.
+```
+
+Then start the receiver and leave it running:
+
+```bash
+niko serve
+```
+
+```
+Receiver listening on http://127.0.0.1:8787. Register an app with: niko init <url> --remote
+No --max-usd: each recording updates a replay copy and nothing is spent.
+Press Ctrl-C to stop.
+```
+
+- **Spending.** Without `--max-usd` the receiver never calls a model: every recording updates a replay copy.
+  With `niko serve --max-usd 20` it builds the stateful copy from the first recording and rebuilds the changed
+  endpoints from later ones. The amount is the most it may spend on one app in total, over all its builds. When
+  it is spent, later recordings update the replay data only and the log says so.
+- **Reaching it.** The receiver listens on this machine only. Other machines reach it through whatever
+  already gives your server https: a reverse proxy, a load balancer, a tunnel. Or let it serve https itself:
+  `niko serve --host 0.0.0.0 --cert cert.pem --key key.pem`. A recorder refuses a plain `http://` address
+  unless it is `localhost`, because the recording and the token would cross the network unprotected.
+- **Tokens.** A token is for one app. A recording sent with it is filed under that app whatever the sender
+  claims, and is refused if it is a recording of other addresses. The receiver keeps only a hash of the token.
+
+### On the machine with the login
+
+Install Niko there (section 3), then:
+
+```bash
+niko record --server https://niko.yourcompany.com --token <token>
+```
+
+1. A browser window opens. The person logs in to the app as usual and closes the window. This happens once.
+2. Niko crawls the app by itself, read-only, and sends the recording.
+3. It stays running. Every hour it re-checks the app with the same login, and sends a new recording only when
+   the app changed in a way an agent would notice (section 9). A change in data alone, or in page markup alone,
+   sends nothing.
+
+The app is always set up as a real person's account (section 5): nothing that changes it is sent, whoever
+clicks, and requests are paced. The server address and the token are remembered, so later it is just
+`niko record`.
+
+| Option | What it does |
+|---|---|
+| `--once` | One round, then stop. Exit code 3 when there was no valid login |
+| `--every <minutes>` | How often to re-check. Default 60 |
+| `--human` | First recording: the person uses the app in the window, instead of the crawl. Covers more |
+| `--max-actions <n>` | First recording: stop the crawl after this many actions. Default 300 |
+| `--delay <seconds>` | Wait this long between requests to the app. Remembered |
+| `--show` | Show the browser window while it records |
+| `--no-login` | Do not open the login window |
+
+`NIKO_SERVER` and `NIKO_TOKEN` can be set instead of `--server` and `--token`, which keeps the token out of the
+shell history.
+
+**When the login expires**, the recorder says so, tells the receiver, and tries again at the next round. Nothing
+is sent meanwhile. A person logs in again with `niko login`, or hands over a session from their own browser with
+`niko adopt` (section 9). No password is stored at any point.
+
+**With no person at that machine**, run `niko record --once --no-login` to set the folder up, take a session in
+with `niko adopt cookies.json`, then run `niko record`.
+
+### What is sent and what stays
+
+| Sent to your server | Stays on the machine with the login |
+|---|---|
+| The scrubbed recording: requests, responses and page snapshots, with cookies, tokens and passwords replaced by placeholders | The browser profile and the saved session cookies |
+| The read/write decisions (`policy.yaml`) | The raw recording and its HAR file |
+| For a re-check: which endpoints changed | The table of real values behind the placeholders (`pseudonyms.json`) |
+
+The recording does hold the app's data: names, records, whatever the pages showed. Only secrets are removed by
+default (section 11). Send it only to a server that is allowed to hold that data.
+
+### Using the copy
+
+The receiver prints one line per event:
+
+```
+127.0.0.1_4010: recording 20261120-063919 received (290 files, 0.4 MB)
+127.0.0.1_4010: 20261120-063919 The copy replays the new recording. Nothing was built: no spending cap was given.
+127.0.0.1_4010: recorder says recorded
+```
+
+From there the app is like any other under `.niko/` on your server: `niko up`, `niko reset`, `niko verify`,
+`niko report`. After a new recording arrives, stop and start `niko up` to pick it up. `GET /status` on the
+receiver, with the token, returns the number of recordings, the last job and what the recorder last said.
+
+### Limits
+
+- The recorder is this command-line tool. The machine with the login needs Node and a browser; there is no
+  packaged installer yet.
+- The crawl clicks safe links and buttons only. Use `--human` when screens are behind forms.
+- The receiver does not start or restart `niko up`.
+- A login that expires still needs a person to log in again, on that machine.
+
+## 11. Secrets and personal data
 
 **Secrets.** Before anything else reads a capture, session cookies, tokens, CSRF values and typed passwords are
 replaced with placeholders such as `SBX_SESSION_1`. The analysis, the builder and the copy only ever see that
@@ -544,7 +720,7 @@ yourself whether the result may be sent to a model.
 
 `niko scrub --off` goes back to secrets only, for apps whose data is fictional.
 
-## 11. Command reference
+## 12. Command reference
 
 Every command accepts `--app <name>`, needed only when `.niko/` holds more than one app.
 
@@ -554,6 +730,7 @@ Every command accepts `--app <name>`, needed only when `.niko/` holds more than 
 | `niko init <url>` | Creates `.niko/<app>/` and opens Chrome for a login. `--no-login`, `--origin <origin...>`, `--real-account` | A person, unless `--no-login` |
 | `niko login` | Opens Chrome with the saved profile to log in again | A person |
 | `niko forget` | Deletes the saved login (the tool's Chrome profile and session cookies) | |
+| `niko adopt [file]` | Takes in a login made in a person's own browser (a cookies file), or `--serve` to receive pushed sessions. `--port <n>`, `--no-probe` | A cookies export |
 | `niko capture` | Records a person's session until the window is closed. `--screenshots`, `--label <text>`, `--after-reset`, `--delay <s>`, `--forget-after` | A person |
 | `niko capture --script <file>` | Records a scripted session. `--headless` | |
 | `niko capture --explore` | Records an automatic read-only crawl. `--max-actions <n>` (default 300), `--headless`, `--allow-writes` | A valid login |
@@ -566,12 +743,15 @@ Every command accepts `--app <name>`, needed only when `.niko/` holds more than 
 | `niko up` | Runs the copy and a Chrome attached to it. `--headless`, `--no-chrome`, `--replay-only`, `--today`, `--port`, `--control-port`, `--cdp-port` | |
 | `niko reset` | Puts the running copy's data back to the start | A running copy |
 | `niko down` | Stops the running copy | A running copy |
-| `niko drift` | Compares the real app with the recordings. `--headless`, `--update`, `--max-usd <x>`. Exit 0, 1, 2 or 3 | A valid login |
+| `niko drift` | Compares the real app with the recordings. `--headless`, `--update`, `--max-usd <x>`, `--wait <minutes>`, `--port <n>`. Exit 0, 1, 2 or 3 | A valid login, or an adopted one |
 | `niko schedule daily` | Writes a daily drift job. `--hour <h>` | |
+| `niko init <url> --remote` | Registers an app that is recorded on another machine and prints its token. Opens no browser | |
+| `niko serve` | Receives recordings from `niko record` and keeps each app's copy up to date. `--port <n>` (default 8787), `--host <address>`, `--cert <file>`, `--key <file>`, `--max-usd <x>` (total per app; without it nothing is built). Runs until stopped | API key, only with `--max-usd` |
+| `niko record` | Records the app read-only and sends the scrubbed recording to a receiver, then re-checks every hour. `--server <url>`, `--token <token>`, `--every <minutes>`, `--once`, `--human`, `--show`, `--no-login`, `--max-actions <n>`, `--delay <s>`. Runs until stopped unless `--once` | A person to log in once |
 
 Errors are printed as `niko: <message>` and the command exits with code 1.
 
-## 12. Files
+## 13. Files
 
 Everything for an app is under `.niko/<app>/`. The parts you may want to read or edit:
 
@@ -584,13 +764,15 @@ Everything for an app is under `.niko/<app>/`. The parts you may want to read or
 | `replica/` | The stateful copy: `schema.sql`, `seed.sql`, `routes/`, `templates/`, `ledger.json`, `report.md` |
 | `drift/` | The latest drift report |
 | `profile/`, `session-cookies.json`, `ca/` | The saved login and the copy's certificate. Private |
+| `recorder.json` | On a recording machine: the receiver's address, its token, and which recordings were sent. Private |
+| `upload-token.sha256` | On a receiving server: the hash of the app's token |
 
 The complete list with formats is in [FORMATS.md](FORMATS.md).
 
 To start an app again from nothing, delete `.niko/<app>/`. To remove one recording, delete its folder under
 `captures/` and run `niko analyze`.
 
-## 13. Troubleshooting
+## 14. Troubleshooting
 
 | What you see | Why | What to do |
 |---|---|---|
@@ -615,7 +797,7 @@ When something else goes wrong, the most useful things to send with a report are
 `niko report`, and the `uncaptured` and `external` lines from `GET /log`. Do not send the `captures/` folder: it
 holds the unscrubbed recording.
 
-## 14. Limits
+## 15. Limits
 
 The full list is in [STATUS.md](STATUS.md). The ones you are most likely to meet:
 
@@ -632,6 +814,6 @@ The full list is in [STATUS.md](STATUS.md). The ones you are most likely to meet
 - **One copy at a time** per machine with the default ports.
 - **The proxy port is open on every network interface**, because of the library it uses. Requests from other
   machines are refused with `403`; only this machine gets answers.
-- **Personal-data removal is partial** (section 10).
+- **Personal-data removal is partial** (section 11).
 - **The builder is restricted, not sealed.** It can only write inside the copy's folder and cannot read the
   held-back recordings, but it does not run in a container.

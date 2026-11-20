@@ -8,7 +8,8 @@ real thing: no staging environment, no client access, nothing real gets changed,
 second. The tool tells you which actions in the copy are proven and which are not.
 
 It runs on your machine. Nothing is sent to us. The only outside call is to Anthropic, with your own API key,
-and only when you run `niko build`.
+and only when a copy is built. If the recording is made on someone else's machine, `niko record` sends it to
+your own server and nowhere else.
 
 **Status: early.** Everything below works on the test app in this repo and passes its tests, and it has been run
 once on a self-hosted Gitea. It has not yet been run on a large real app. See [docs/STATUS.md](docs/STATUS.md)
@@ -48,6 +49,48 @@ Browser Use, Stagehand, Puppeteer) uses the copy at the app's real URLs with no 
 const browser = await chromium.connectOverCDP("http://127.0.0.1:9333");
 ```
 
+## When the login is on someone else's machine
+
+Often the app can only be reached with a login that belongs to someone else: a client, a customer, a colleague
+in another office. Then the recording and the copy live on two machines.
+
+```
+Machine with the login                    Your server
+----------------------                    -----------
+niko record        -- scrubbed -->        niko serve
+(read-only, uses      recording           (builds and checks the copy)
+ the login made       over https          niko up
+ on that machine)                         (the sandbox)
+      |                                        ^
+      v                                        |
+ the real app                             your developers
+                                          and their agent
+```
+
+On your server, register the app and start the receiver:
+
+```bash
+niko init https://app.example.com --remote    # prints a token for this app
+niko serve --max-usd 20                       # builds each recording, $20 at most per app
+```
+
+On the machine with the login, one command. A person logs in once in the window it opens:
+
+```bash
+niko record --server https://niko.yourcompany.com --token <token>
+```
+
+From then on it re-checks the app every hour and sends a new recording only when the app changed.
+
+- **The login never leaves the machine it was made on.** No password is stored anywhere. The browser profile,
+  the session cookies and the raw recording stay there; what is sent has cookies, tokens and passwords
+  replaced by placeholders.
+- **It only reads.** Nothing that changes the app is sent, whoever clicks.
+- **The recording does go to your server**, with the app's data in it. Send it only where you are allowed to.
+- **Without `--max-usd` nothing is spent**: each recording updates a replay copy.
+
+More in the guide: [Record on one machine, build on another](docs/GUIDE.md#10-record-on-one-machine-build-on-another).
+
 ## Two kinds of copy
 
 | | Replay copy | Stateful copy |
@@ -73,6 +116,9 @@ const browser = await chromium.connectOverCDP("http://127.0.0.1:9333");
 | `niko up` / `reset` / `down` | Run the copy, restore its data, stop it |
 | `niko drift` | Re-check the live app, read-only, and report what changed. `--update` refreshes the copy |
 | `niko schedule daily` | Run the drift check every day |
+| `niko adopt` | Take in a login a person made in their own browser, so no password is stored |
+| `niko init <url> --remote` / `niko serve` | On your server: register an app recorded elsewhere, and receive its recordings |
+| `niko record` | On the machine with the login: record read-only and send the scrubbed recording to `niko serve` |
 | `niko doctor` | Check this machine |
 
 While the copy runs, a control port answers `POST /reset`, `GET /state` (the database as JSON, for test

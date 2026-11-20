@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { analyze } from "../src/analyze/index.js";
-import { SessionExpired, controlsOf, drift } from "../src/drift/index.js";
+import { SessionExpired, adoptDriftCapture, controlsOf, drift } from "../src/drift/index.js";
 import { type Clinic, captureClinic, startClinic } from "./helpers.js";
 
 describe("drift check", () => {
@@ -38,6 +38,15 @@ describe("drift check", () => {
     expect(what).toMatch(/breaking: .*field removed: \[\]\.author/);
     expect(what).toMatch(/behavioural: .*new field: \[\]\.created/);
     expect(r.affectedClusters.length).toBeGreaterThan(0);
+  });
+
+  it("stops reporting a change once its recording has been taken in", async () => {
+    const r = await drift(ctx.paths, ctx.config, { headless: true, bundledBrowser: true });
+    expect(r.worst).toBe("breaking");
+    adoptDriftCapture(ctx.paths, r.capture);
+    analyze(ctx.paths, ctx.config);
+    const again = await drift(ctx.paths, ctx.config, { headless: true, bundledBrowser: true });
+    expect(again.items.filter((i) => i.severity !== "cosmetic")).toEqual([]);
   });
 
   it("stops and says so when the session has expired", async () => {
